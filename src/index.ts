@@ -41,3 +41,6 @@ export { checkGlobCount } from './engine/checks/glob-count.js';
 export { checkGitPattern } from './engine/checks/git-pattern.js';
 export { checkStructureMatch } from './engine/checks/structure-match.js';
 export { checkTrendCheck } from './engine/checks/trend-check.js';
+
+// Server
+export { createServer, startServer } from './server.js';
