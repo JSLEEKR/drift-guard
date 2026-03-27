@@ -5,7 +5,8 @@ import { StateManager } from '../../src/state/state-manager.js';
 import { History } from '../../src/state/history.js';
 import { ContextPreserver } from '../../src/state/context-preserver.js';
 import type { DriftPromise } from '../../src/types.js';
-import { createTmpDir, cleanupTmpDir, makeReport } from '../helpers.js';
+import { checkContentMatch } from '../../src/engine/checks/content-match.js';
+import { createTmpDir, cleanupTmpDir, makeReport, makePromise } from '../helpers.js';
 
 let tmpDir: string;
 let driftDir: string;
@@ -188,6 +189,25 @@ describe('StateManager.saveTrack handles missing history dir', () => {
       { path: 'test.ts', lines: 10, size: 100, timestamp: new Date().toISOString() },
     ]);
     expect(fs.existsSync(filePath)).toBe(true);
+  });
+});
+
+describe('error messages include typed error details', () => {
+  it('checkContentMatch returns error detail string when file is unreadable', () => {
+    // Create a directory where a file is expected to cause a read error
+    const subDir = path.join(tmpDir, 'not-a-file');
+    fs.mkdirSync(subDir, { recursive: true });
+
+    const promise = makePromise({
+      check_type: 'content_match',
+      check_config: { file: 'not-a-file', must_contain: ['something'] },
+    });
+    const result = checkContentMatch(promise, tmpDir);
+    // The error detail should contain the stringified error, not be empty
+    expect(result.status).toBe('fail');
+    expect(result.detail.length).toBeGreaterThan(0);
+    // Should include some error info (EISDIR or similar)
+    expect(result.detail).toMatch(/Failed to read|EISDIR|directory/i);
   });
 });
 

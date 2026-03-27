@@ -57,7 +57,7 @@ export function checkContentMatch(
   let content: string;
   try {
     content = readFileSync(filePath, 'utf-8');
-  } catch (err) {
+  } catch (err: unknown) {
     return {
       promiseId: promise.id,
       promiseText: promise.text,

@@ -97,7 +97,7 @@ export class LLMEvaluator {
         }));
 
       return { score, violations };
-    } catch (err) {
+    } catch (err: unknown) {
       return {
         score: 0,
         violations: [
