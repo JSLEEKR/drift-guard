@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-03-26 -- Cycle 1 Complete (Rounds 1-10)
+
+### Added
+- **Performance benchmarks** -- 17 tests validating rule engine (100 promises), trend detection (500 entries), state manager (rapid cycles), history bulk ops
+- **CI integration** -- CI-friendly output formats, exit codes, GitHub Actions compatibility
+- **Cross-tool integration** -- documentation for MCP ecosystem and external tool integration
+- **Input validation** -- path traversal protection, YAML bomb prevention, config sanitization
+- **Error recovery** -- graceful handling of corrupted state, atomic writes, filesystem error recovery
+- **Troubleshooting guide** -- common error solutions and usage examples in README
+
+### Changed
+- **Test coverage** expanded from 90 to 193 tests across 21 test files
+- **Code quality** improved with refactored modules, better type safety, cleaner boundaries
+- **User onboarding** improved with better CLI help, defaults, and error messages
+
+### Security
+- Path traversal prevention in all file operations
+- YAML bomb protection with 64KB size limit
+- Config sanitization for untrusted inputs
+
+---
+
 ## [0.1.0] - 2026-03-26
 
 ### Added

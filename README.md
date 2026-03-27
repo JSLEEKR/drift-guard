@@ -7,7 +7,7 @@
 [![GitHub Stars](https://img.shields.io/github/stars/JSLEEKR/drift-guard?style=for-the-badge&logo=github&color=yellow)](https://github.com/JSLEEKR/drift-guard/stargazers)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/typescript-5.4+-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
-[![Tests](https://img.shields.io/badge/tests-98%20passing-brightgreen?style=for-the-badge)](#)
+[![Tests](https://img.shields.io/badge/tests-193%20passing-brightgreen?style=for-the-badge)](#)
 
 <br/>
 
