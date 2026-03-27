@@ -27,6 +27,11 @@ When drift-guard MCP server is available:
 - Every 5 tool uses: call \`drift_guard_check\`
 - If check returns "degraded": call \`drift_guard_save\` with session summary, then warn user
 - On task completion: call \`drift_guard_report\`
+
+When dispatching subagents:
+- Include in EVERY subagent prompt: "After completing work, report: files created/modified, test count, any quality concerns"
+- After each subagent returns: call \`drift_guard_track\` with files the subagent changed
+- After every 3rd subagent completion: call \`drift_guard_check\`
 `;
 
 const DEFAULT_CONFIG_YAML = `# drift-guard configuration
@@ -357,6 +362,225 @@ program
 
     console.log('─'.repeat(80));
     console.log(`Total: ${colorize(String(promises.length), 'cyan')} promises`);
+    console.log();
+  });
+
+// ── track-auto ───────────────────────────────────────────────────────────
+
+program
+  .command('track-auto')
+  .description('Auto-detect and track recently modified files')
+  .option('--project-root <path>', 'Project root directory', '.')
+  .option('--since <minutes>', 'Track files modified in last N minutes', '30')
+  .action(async (options: { projectRoot: string; since: string }) => {
+    const projectRoot = path.resolve(options.projectRoot);
+    const sinceMinutes = parseInt(options.since, 10);
+
+    if (isNaN(sinceMinutes) || sinceMinutes <= 0) {
+      console.error(colorize('Invalid --since value. Must be a positive integer.', 'red'));
+      process.exit(1);
+    }
+
+    const sm = new StateManager(projectRoot);
+    const cutoff = Date.now() - sinceMinutes * 60 * 1000;
+
+    // Try git status first (most reliable for tracked projects)
+    const { execSync } = await import('node:child_process');
+    let files: string[] = [];
+    try {
+      const gitOutput = execSync('git diff --name-only HEAD 2>/dev/null || git ls-files --others --modified --exclude-standard', {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        timeout: 10_000,
+      });
+      files = gitOutput
+        .split('\n')
+        .map((f) => f.trim())
+        .filter((f) => f.length > 0);
+    } catch {
+      // Fall back to filesystem scan
+      files = scanRecentFiles(projectRoot, cutoff);
+    }
+
+    // Filter by modification time
+    const recentFiles: string[] = [];
+    for (const file of files) {
+      const fullPath = path.resolve(projectRoot, file);
+      try {
+        const stat = fs.statSync(fullPath);
+        if (stat.mtimeMs >= cutoff && stat.isFile()) {
+          recentFiles.push(file);
+        }
+      } catch {
+        // File may have been deleted
+      }
+    }
+
+    if (recentFiles.length === 0) {
+      console.log(colorize('No recently modified files found.', 'yellow'));
+      return;
+    }
+
+    // Track them
+    const entries = recentFiles.map((file) => {
+      const fullPath = path.resolve(projectRoot, file);
+      const stat = fs.statSync(fullPath);
+      const content = fs.readFileSync(fullPath, 'utf8');
+      const lines = content.split('\n').length;
+      return {
+        path: file,
+        lines,
+        size: stat.size,
+        timestamp: new Date().toISOString(),
+      };
+    });
+
+    sm.init();
+    sm.saveTrack(entries);
+
+    console.log(colorize(`Tracked ${recentFiles.length} file(s):`, 'green'));
+    for (const file of recentFiles) {
+      console.log(`  ${colorize('•', 'cyan')} ${file}`);
+    }
+  });
+
+function scanRecentFiles(dir: string, cutoff: number, prefix = ''): string[] {
+  const results: string[] = [];
+  const IGNORE = new Set(['node_modules', '.git', '.drift-guard', 'dist', '__pycache__', '.venv', 'venv']);
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (IGNORE.has(entry.name)) continue;
+      const fullPath = path.join(dir, entry.name);
+      const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        results.push(...scanRecentFiles(fullPath, cutoff, relPath));
+      } else if (entry.isFile()) {
+        try {
+          const stat = fs.statSync(fullPath);
+          if (stat.mtimeMs >= cutoff) {
+            results.push(relPath);
+          }
+        } catch {
+          // skip
+        }
+      }
+    }
+  } catch {
+    // skip inaccessible directories
+  }
+  return results;
+}
+
+// ── quality-gate ─────────────────────────────────────────────────────────
+
+interface QualityCheck {
+  name: string;
+  check: () => boolean;
+}
+
+program
+  .command('quality-gate')
+  .description('Validate project meets minimum quality standards')
+  .option('--project-root <path>', 'Project root directory', '.')
+  .option('--json', 'Output results as JSON')
+  .action((options: { projectRoot: string; json?: boolean }) => {
+    const root = path.resolve(options.projectRoot);
+    const jsonMode = !!options.json;
+
+    const checks: QualityCheck[] = [
+      {
+        name: 'README exists',
+        check: () => fs.existsSync(path.join(root, 'README.md')),
+      },
+      {
+        name: 'README 300+ lines',
+        check: () => {
+          const p = path.join(root, 'README.md');
+          if (!fs.existsSync(p)) return false;
+          return fs.readFileSync(p, 'utf8').split('\n').length >= 300;
+        },
+      },
+      {
+        name: 'CHANGELOG exists',
+        check: () => fs.existsSync(path.join(root, 'CHANGELOG.md')),
+      },
+      {
+        name: 'ROUND_LOG exists',
+        check: () => fs.existsSync(path.join(root, 'ROUND_LOG.md')),
+      },
+      {
+        name: 'LICENSE exists',
+        check: () => fs.existsSync(path.join(root, 'LICENSE')),
+      },
+      {
+        name: 'Tests exist',
+        check: () => {
+          const testDirs = ['tests', 'test', '__tests__', 'spec'];
+          return testDirs.some((d) => {
+            const dirPath = path.join(root, d);
+            return fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory();
+          });
+        },
+      },
+      {
+        name: 'README has for-the-badge style',
+        check: () => {
+          const p = path.join(root, 'README.md');
+          if (!fs.existsSync(p)) return false;
+          return fs.readFileSync(p, 'utf8').includes('for-the-badge');
+        },
+      },
+      {
+        name: 'README has Why This Exists section',
+        check: () => {
+          const p = path.join(root, 'README.md');
+          if (!fs.existsSync(p)) return false;
+          const content = fs.readFileSync(p, 'utf8').toLowerCase();
+          return content.includes('why this exists') || content.includes('why-this-exists');
+        },
+      },
+    ];
+
+    const results = checks.map((c) => {
+      let passed = false;
+      try {
+        passed = c.check();
+      } catch {
+        passed = false;
+      }
+      return { name: c.name, passed };
+    });
+
+    const passedCount = results.filter((r) => r.passed).length;
+    const totalCount = results.length;
+    const allPassed = passedCount === totalCount;
+
+    if (jsonMode) {
+      console.log(JSON.stringify({ checks: results, passed: passedCount, total: totalCount, allPassed }));
+      if (!allPassed) process.exit(1);
+      return;
+    }
+
+    console.log('\n' + colorize('drift-guard Quality Gate', 'bold'));
+    console.log('─'.repeat(50));
+
+    for (const r of results) {
+      const icon = r.passed ? colorize('✓', 'green') : colorize('✗', 'red');
+      console.log(`  ${icon}  ${r.name}`);
+    }
+
+    console.log('─'.repeat(50));
+    const scoreStr = `${passedCount}/${totalCount}`;
+    const scoreColor = allPassed ? 'green' : passedCount >= totalCount * 0.6 ? 'yellow' : 'red';
+    console.log(`Result: ${colorize(scoreStr, scoreColor)} checks passed`);
+
+    if (!allPassed) {
+      console.log(colorize('\nQuality gate FAILED.', 'red'));
+      process.exit(1);
+    } else {
+      console.log(colorize('\nQuality gate PASSED.', 'green'));
+    }
     console.log();
   });
 
