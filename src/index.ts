@@ -45,5 +45,8 @@ export { checkTrendCheck } from './engine/checks/trend-check.js';
 // Utils
 export { safePath, sanitizeProjectRoot, sanitizeConfig, PathTraversalError } from './utils/path-safety.js';
 
+// CLI utilities
+export { shouldFailOn } from './cli/ci-helpers.js';
+
 // Server
 export { createServer, startServer } from './server.js';

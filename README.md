@@ -365,10 +365,41 @@ Designed to be launched by Claude Code as an MCP server process. Communicates vi
 Run a manual quality check (Stage 1 rule engine only).
 
 ```bash
-drift-guard check [--project-root <path>]
+drift-guard check [--project-root <path>] [--json] [--fail-on <status>]
 ```
 
-Outputs a formatted table of promise checks with pass/warn/fail status, score, trend, and recommendation. Exits with code 1 if status is degraded or critical.
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--project-root <path>` | Project root directory (default: `.`) |
+| `--json` | Output results as JSON for CI pipelines |
+| `--fail-on <status>` | Exit with code 1 if status meets or exceeds threshold (`warning`, `degraded`, `critical`) |
+
+Outputs a formatted table of promise checks with pass/warn/fail status, score, trend, and recommendation. Exits with code 1 if status is degraded or critical (default), or at the `--fail-on` threshold.
+
+**JSON output shape:**
+
+```json
+{
+  "score": 85.0,
+  "status": "healthy",
+  "trend": "stable",
+  "recommendation": "Quality is healthy. No immediate action required.",
+  "results": [
+    {
+      "promiseId": "p-001",
+      "promiseText": "README.md must exist",
+      "status": "pass",
+      "detail": "File exists"
+    }
+  ],
+  "passed": 5,
+  "warned": 1,
+  "failed": 0,
+  "total": 6
+}
+```
 
 ### `drift-guard report`
 
@@ -769,14 +800,50 @@ drift-guard's MCP interface is tool-agnostic. Future versions will support:
 
 ### GitHub Actions
 
+drift-guard works in CI today using the CLI. Add this workflow to your repository:
+
 ```yaml
-# Future: drift-guard as a CI check
-- name: Quality Check
-  uses: JSLEEKR/drift-guard-action@v1
-  with:
-    fail-on: degraded
-    promises: .drift-guard/promises.json
+# .github/workflows/drift-guard.yml
+name: Quality Gate
+on: [push, pull_request]
+
+jobs:
+  quality-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install drift-guard
+        run: npm install -g drift-guard
+
+      - name: Run quality check
+        run: drift-guard check --json --fail-on warning
+        # Exits with code 1 if status is warning or worse
+        # Use --fail-on degraded for a less strict gate
+
+      - name: Upload results (optional)
+        if: always()
+        run: drift-guard check --json > drift-guard-report.json
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-guard-report
+          path: drift-guard-report.json
 ```
+
+**Exit code behavior:**
+
+| `--fail-on` value | Exits 1 when status is... |
+|--------------------|--------------------------|
+| `warning` | warning, degraded, or critical |
+| `degraded` | degraded or critical |
+| `critical` | critical only |
+| *(not set)* | degraded or critical (default) |
 
 ### Planned Features
 

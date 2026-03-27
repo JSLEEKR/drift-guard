@@ -65,6 +65,10 @@ function statusColor(status: QualityStatus): 'green' | 'yellow' | 'red' {
   }
 }
 
+// ── CI helpers ───────────────────────────────────────────────────────────
+
+import { shouldFailOn } from './ci-helpers.js';
+
 // ── CLI setup ──────────────────────────────────────────────────────────────
 
 const program = new Command();
@@ -135,23 +139,31 @@ program
   .command('check')
   .description('Manual quality check (Stage 1 rule engine only)')
   .option('--project-root <path>', 'Project root directory', '.')
-  .action((options: { projectRoot: string }) => {
+  .option('--json', 'Output results as JSON (CI-friendly)')
+  .option('--fail-on <status>', 'Exit with code 1 if status meets or exceeds threshold (warning, degraded, critical)', '')
+  .action((options: { projectRoot: string; json?: boolean; failOn?: string }) => {
     const projectRoot = path.resolve(options.projectRoot);
     const driftDir = path.join(projectRoot, DRIFT_DIR);
+    const jsonMode = !!options.json;
+    const failOn = options.failOn || '';
 
     const sm = new StateManager(projectRoot);
     const promises = sm.loadPromises();
 
     if (promises.length === 0) {
-      console.log(colorize('No promises found.', 'yellow'));
-      console.log('');
-      console.log('To get started:');
-      console.log('  1. Run ' + colorize('drift-guard init', 'cyan') + ' to set up the project');
-      console.log('  2. Start the MCP server with ' + colorize('drift-guard serve', 'cyan'));
-      console.log('  3. The AI agent will extract promises from your CLAUDE.md and config files');
-      console.log('  4. Then run ' + colorize('drift-guard check', 'cyan') + ' to verify quality');
-      console.log('');
-      console.log('For more details, run ' + colorize('drift-guard --help', 'cyan'));
+      if (jsonMode) {
+        console.log(JSON.stringify({ error: 'No promises found', promises: 0 }));
+      } else {
+        console.log(colorize('No promises found.', 'yellow'));
+        console.log('');
+        console.log('To get started:');
+        console.log('  1. Run ' + colorize('drift-guard init', 'cyan') + ' to set up the project');
+        console.log('  2. Start the MCP server with ' + colorize('drift-guard serve', 'cyan'));
+        console.log('  3. The AI agent will extract promises from your CLAUDE.md and config files');
+        console.log('  4. Then run ' + colorize('drift-guard check', 'cyan') + ' to verify quality');
+        console.log('');
+        console.log('For more details, run ' + colorize('drift-guard --help', 'cyan'));
+      }
       process.exit(1);
     }
 
@@ -161,6 +173,37 @@ program
 
     const score = computeScore(results, promises);
     const status = classifyStatus(score);
+    const scoreHistory = history.getScoreHistory();
+    const trend = detectTrend([...scoreHistory, score]);
+    const topViolations = topViolationTexts(results, promises);
+    const recommendation = generateRecommendation(status, trend, topViolations);
+
+    // JSON output mode for CI pipelines
+    if (jsonMode) {
+      const output = {
+        score,
+        status,
+        trend,
+        recommendation,
+        results: results.map((r) => ({
+          promiseId: r.promiseId,
+          promiseText: r.promiseText,
+          status: r.status,
+          detail: r.detail,
+        })),
+        passed: results.filter((r) => r.status === 'pass').length,
+        warned: results.filter((r) => r.status === 'warn').length,
+        failed: results.filter((r) => r.status === 'fail').length,
+        total: results.length,
+      };
+      console.log(JSON.stringify(output));
+
+      // Determine exit code
+      if (shouldFailOn(status, failOn)) {
+        process.exit(1);
+      }
+      return;
+    }
 
     // Print header
     console.log('\n' + colorize('drift-guard Quality Check', 'bold'));
@@ -199,14 +242,13 @@ program
     const statusColored = colorize(status.toUpperCase(), statusColor(status));
     console.log(`Score: ${scoreColored}  Status: ${statusColored}`);
 
-    const scoreHistory = history.getScoreHistory();
-    const trend = detectTrend([...scoreHistory, score]);
-    const topViolations = topViolationTexts(results, promises);
-    const recommendation = generateRecommendation(status, trend, topViolations);
     console.log(`Trend: ${trend}  Recommendation: ${recommendation}`);
     console.log();
 
-    if (status === 'degraded' || status === 'critical') {
+    // Determine exit code
+    if (shouldFailOn(status, failOn)) {
+      process.exit(1);
+    } else if (status === 'degraded' || status === 'critical') {
       process.exit(1);
     }
   });
