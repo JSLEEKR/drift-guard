@@ -112,7 +112,12 @@ program
     }
 
     console.log('\n' + colorize('drift-guard initialized.', 'bold'));
-    console.log('Next step: start the MCP server with ' + colorize('drift-guard serve', 'cyan'));
+    console.log('');
+    console.log('Next steps:');
+    console.log('  1. Add the MCP server to your Claude settings (see README)');
+    console.log('  2. Start the server: ' + colorize('npx drift-guard serve', 'cyan'));
+    console.log('  3. The AI agent auto-extracts promises from your project files');
+    console.log('  4. Run manual checks: ' + colorize('drift-guard check', 'cyan'));
   });
 
 // ── serve ─────────────────────────────────────────────────────────────────
@@ -138,7 +143,15 @@ program
     const promises = sm.loadPromises();
 
     if (promises.length === 0) {
-      console.log(colorize('No promises found. Run drift-guard init first.', 'yellow'));
+      console.log(colorize('No promises found.', 'yellow'));
+      console.log('');
+      console.log('To get started:');
+      console.log('  1. Run ' + colorize('drift-guard init', 'cyan') + ' to set up the project');
+      console.log('  2. Start the MCP server with ' + colorize('drift-guard serve', 'cyan'));
+      console.log('  3. The AI agent will extract promises from your CLAUDE.md and config files');
+      console.log('  4. Then run ' + colorize('drift-guard check', 'cyan') + ' to verify quality');
+      console.log('');
+      console.log('For more details, run ' + colorize('drift-guard --help', 'cyan'));
       process.exit(1);
     }
 
@@ -270,7 +283,8 @@ program
     console.log('─'.repeat(80));
 
     if (promises.length === 0) {
-      console.log(colorize('No promises found. Run drift-guard init first.', 'yellow'));
+      console.log(colorize('No promises found.', 'yellow'));
+      console.log('Run ' + colorize('drift-guard init', 'cyan') + ' and start the MCP server to extract promises.');
       console.log();
       return;
     }
@@ -303,6 +317,14 @@ program
     console.log(`Total: ${colorize(String(promises.length), 'cyan')} promises`);
     console.log();
   });
+
+// ── Unknown command hint ─────────────────────────────────────────────────
+
+program.on('command:*', () => {
+  console.error(colorize(`Unknown command: ${program.args.join(' ')}`, 'red'));
+  console.log('Run ' + colorize('drift-guard --help', 'cyan') + ' to see available commands.');
+  process.exit(1);
+});
 
 // ── Parse ──────────────────────────────────────────────────────────────────
 

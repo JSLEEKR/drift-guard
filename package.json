@@ -1,10 +1,26 @@
 {
   "name": "drift-guard",
   "version": "0.1.0",
+  "description": "Automated quality drift detection for AI-assisted development sessions",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": { "drift-guard": "./dist/cli/index.js" },
+  "keywords": [
+    "ai",
+    "quality",
+    "drift-detection",
+    "mcp",
+    "claude",
+    "code-quality",
+    "monitoring"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JSLEEKR/drift-guard.git"
+  },
+  "author": "JSLEEKR",
+  "license": "MIT",
   "scripts": { "build": "tsc", "test": "vitest run", "ci": "vitest run --reporter=verbose" },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

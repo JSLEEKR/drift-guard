@@ -258,7 +258,7 @@ async function handleCheck(args: {
         {
           type: 'text' as const,
           text: JSON.stringify({
-            error: 'No promises found. Run drift_guard_init first and save extracted promises.',
+            error: 'No promises found. Run drift_guard_init first, then extract and save promises from your project files. See README for the full setup flow.',
           }),
         },
       ],
