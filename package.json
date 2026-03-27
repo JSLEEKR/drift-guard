@@ -1,0 +1,21 @@
+{
+  "name": "drift-guard",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": { "drift-guard": "./dist/cli/index.js" },
+  "scripts": { "build": "tsc", "test": "vitest run", "ci": "vitest run --reporter=verbose" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "commander": "^13.0.0",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": { "node": ">=18.0.0" }
+}

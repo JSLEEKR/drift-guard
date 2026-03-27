@@ -1,0 +1,96 @@
+[
+  {
+    "id": "proc-001",
+    "source": "CLAUDE.md",
+    "category": "process",
+    "text": "All features must have corresponding tests before merging",
+    "check_type": "glob_count",
+    "check_config": { "pattern": "tests/**/*.test.ts", "min": 1 },
+    "weight": 3
+  },
+  {
+    "id": "proc-002",
+    "source": "CLAUDE.md",
+    "category": "process",
+    "text": "Commit messages must follow Conventional Commits format",
+    "check_type": "git_pattern",
+    "check_config": { "pattern": "^(feat|fix|docs|chore|refactor|test|style)(\\(.+\\))?: .+" },
+    "weight": 2
+  },
+  {
+    "id": "style-001",
+    "source": "feedback_style.md",
+    "category": "style",
+    "text": "README must be at least 50 lines",
+    "check_type": "min_lines",
+    "check_config": { "path": "README.md", "min": 50 },
+    "weight": 2
+  },
+  {
+    "id": "style-002",
+    "source": "feedback_style.md",
+    "category": "style",
+    "text": "README must contain an Overview section",
+    "check_type": "content_match",
+    "check_config": { "path": "README.md", "pattern": "## Overview" },
+    "weight": 1
+  },
+  {
+    "id": "style-003",
+    "source": "feedback_style.md",
+    "category": "style",
+    "text": "README must contain an Installation section",
+    "check_type": "content_match",
+    "check_config": { "path": "README.md", "pattern": "## Installation" },
+    "weight": 1
+  },
+  {
+    "id": "arch-001",
+    "source": "CLAUDE.md",
+    "category": "architecture",
+    "text": "Source code must live under src/",
+    "check_type": "file_exists",
+    "check_config": { "path": "src" },
+    "weight": 3
+  },
+  {
+    "id": "arch-002",
+    "source": "CLAUDE.md",
+    "category": "architecture",
+    "text": "Tests must live under tests/",
+    "check_type": "file_exists",
+    "check_config": { "path": "tests" },
+    "weight": 2
+  },
+  {
+    "id": "quality-001",
+    "source": "feedback_quality.md",
+    "category": "quality",
+    "text": "Minimum 15 tests per project",
+    "check_type": "trend_check",
+    "check_config": { "metric": "test_count", "min": 15 },
+    "weight": 4
+  },
+  {
+    "id": "quality-002",
+    "source": "feedback_quality.md",
+    "category": "quality",
+    "text": "All exported functions must have JSDoc comments",
+    "check_type": "llm_eval",
+    "check_config": { "prompt": "Check that every exported function has JSDoc." },
+    "weight": 3
+  },
+  {
+    "id": "security-001",
+    "source": "CLAUDE.md",
+    "category": "security",
+    "text": "No secrets or credentials committed to the repository",
+    "check_type": "content_match",
+    "check_config": {
+      "glob": "**/*",
+      "pattern": "(password|secret|api_key|token)\\s*=\\s*['\"][^'\"]+['\"]",
+      "invert": true
+    },
+    "weight": 5
+  }
+]
