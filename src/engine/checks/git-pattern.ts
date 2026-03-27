@@ -22,16 +22,19 @@ export function checkGitPattern(
 
   let commitCount: number;
   try {
-    const output = execSync('git log --oneline | wc -l', {
+    // Use git rev-list --count HEAD instead of piping through shell
+    // to avoid shell injection risks with crafted projectRoot paths
+    const output = execSync('git rev-list --count HEAD', {
       cwd: projectRoot,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 10_000, // 10s timeout to prevent hanging
     });
     commitCount = parseInt(output.trim(), 10);
     if (isNaN(commitCount)) {
       throw new Error(`Unexpected output: "${output.trim()}"`);
     }
-  } catch (err) {
+  } catch (err: unknown) {
     return {
       promiseId: promise.id,
       promiseText: promise.text,

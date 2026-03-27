@@ -190,3 +190,43 @@ describe('PromiseCollector parseExtractionResponse handles malicious input', () 
     expect(({} as Record<string, unknown>)['isAdmin']).toBeUndefined();
   });
 });
+
+describe('safePath rejects encoded path traversals', () => {
+  it('blocks percent-encoded ../ traversal (%2e%2e%2f)', () => {
+    expect(() => safePath(tmpDir, '%2e%2e%2fetc%2fpasswd')).toThrow(PathTraversalError);
+  });
+
+  it('blocks null byte in path', () => {
+    expect(() => safePath(tmpDir, 'legit.txt\0../../etc/passwd')).toThrow(PathTraversalError);
+  });
+
+  it('blocks percent-encoded null byte (%00)', () => {
+    expect(() => safePath(tmpDir, 'legit.txt%00../../etc/passwd')).toThrow(PathTraversalError);
+  });
+
+  it('allows normal percent characters in filenames that are not valid URI encoding', () => {
+    // A literal "%" followed by non-hex chars should not cause issues
+    // decodeURIComponent will fail, so the raw path is used
+    const result = safePath(tmpDir, 'file%ZZname.txt');
+    expect(result).toBe(path.resolve(tmpDir, 'file%ZZname.txt'));
+  });
+});
+
+describe('sanitizeConfig strips dangerous keys', () => {
+  it('does not pass through __proto__ pollution to output', () => {
+    const raw = JSON.parse('{"__proto__":{"polluted":true},"checkInterval":100}');
+    const result = sanitizeConfig(raw);
+    // sanitizeConfig only copies known keys, so __proto__ is never propagated
+    expect(Object.prototype.hasOwnProperty.call(result, '__proto__')).toBe(false);
+    expect(result['checkInterval']).toBe(100);
+    // Verify prototype was not actually polluted
+    expect(({} as Record<string, unknown>)['polluted']).toBeUndefined();
+  });
+
+  it('does not pass through constructor key to output', () => {
+    const result = sanitizeConfig({ constructor: { evil: true } as unknown as string, checkInterval: 50 });
+    // Only known keys are copied; constructor should not appear as own property
+    expect(Object.prototype.hasOwnProperty.call(result, 'constructor')).toBe(false);
+    expect(result['checkInterval']).toBe(50);
+  });
+});

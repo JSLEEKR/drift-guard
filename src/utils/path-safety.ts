@@ -7,8 +7,32 @@ import path from 'node:path';
  * Handles path traversal attacks like `../../etc/passwd`.
  */
 export function safePath(projectRoot: string, relativePath: string): string {
+  // Reject null bytes — they can truncate paths at the OS level
+  if (relativePath.includes('\0')) {
+    throw new PathTraversalError(
+      `Path contains null byte (possible injection attack)`,
+    );
+  }
+
+  // Decode percent-encoded sequences before validation to prevent
+  // bypasses like %2e%2e%2f (../) or %00 (null byte)
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(relativePath);
+  } catch {
+    // If decoding fails, use the raw path — it may contain literal % characters
+    decoded = relativePath;
+  }
+
+  if (decoded.includes('\0')) {
+    throw new PathTraversalError(
+      `Path contains encoded null byte (possible injection attack)`,
+    );
+  }
+
   const resolvedRoot = path.resolve(projectRoot);
-  const resolvedFull = path.resolve(resolvedRoot, relativePath);
+  // Resolve using the decoded path to catch encoded traversals
+  const resolvedFull = path.resolve(resolvedRoot, decoded);
 
   // Ensure the resolved path is inside or exactly the project root
   if (!resolvedFull.startsWith(resolvedRoot + path.sep) && resolvedFull !== resolvedRoot) {
@@ -41,6 +65,14 @@ export function sanitizeProjectRoot(projectRoot: string): string {
  */
 export function sanitizeConfig(raw: Record<string, unknown>): Record<string, unknown> {
   const safe: Record<string, unknown> = {};
+
+  // Reject prototype pollution keys at top level
+  const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+  for (const key of Object.keys(raw)) {
+    if (DANGEROUS_KEYS.has(key)) {
+      delete (raw as Record<string, unknown>)[key];
+    }
+  }
 
   // Clamp thresholds to 0-100
   if (raw['thresholds'] && typeof raw['thresholds'] === 'object' && !Array.isArray(raw['thresholds'])) {
