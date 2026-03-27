@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTmpDir, cleanupTmpDir } from '../helpers.js';
 
-/** Recursive scan for *_test.go and *_test.py files (mirrors findTestFiles in CLI) */
+/** Recursive scan for test files (mirrors findTestFiles in CLI) */
 function scanForTestFiles(dir: string, prefix = ''): string[] {
   const results: string[] = [];
   const IGNORE = new Set(['node_modules', '.git', '.drift-guard', 'dist', '__pycache__', '.venv', 'venv', 'vendor']);
@@ -16,7 +16,14 @@ function scanForTestFiles(dir: string, prefix = ''): string[] {
       if (entry.isDirectory()) {
         results.push(...scanForTestFiles(fullPath, relPath));
       } else if (entry.isFile()) {
-        if (entry.name.endsWith('_test.go') || entry.name.endsWith('_test.py')) {
+        if (
+          entry.name.endsWith('_test.go') ||
+          entry.name.endsWith('_test.py') ||
+          entry.name.endsWith('.test.ts') ||
+          entry.name.endsWith('.test.js') ||
+          entry.name.endsWith('.spec.ts') ||
+          entry.name.endsWith('.spec.js')
+        ) {
           results.push(relPath);
         }
       }
@@ -107,6 +114,16 @@ describe('quality-gate command logic', () => {
     const found = scanForTestFiles(tmpDir);
     expect(found.length).toBeGreaterThan(0);
     expect(found.some((f: string) => f.endsWith('_test.go'))).toBe(true);
+  });
+
+  it('detects colocated TS/JS test files (*.test.ts, *.spec.ts) without test directory', () => {
+    fs.mkdirSync(path.join(tmpDir, 'src', 'core'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'src', 'core', 'engine.ts'), 'export class Engine {}\n', 'utf8');
+    fs.writeFileSync(path.join(tmpDir, 'src', 'core', 'engine.test.ts'), 'it("works", () => {})\n', 'utf8');
+
+    const found = scanForTestFiles(tmpDir);
+    expect(found.length).toBeGreaterThan(0);
+    expect(found.some((f: string) => f.endsWith('.test.ts'))).toBe(true);
   });
 
   it('detects Python test files (*_test.py) without test directory', () => {

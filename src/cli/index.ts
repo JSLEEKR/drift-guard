@@ -486,7 +486,14 @@ function findTestFiles(dir: string, prefix = ''): string[] {
       if (entry.isDirectory()) {
         results.push(...findTestFiles(fullPath, relPath));
       } else if (entry.isFile()) {
-        if (entry.name.endsWith('_test.go') || entry.name.endsWith('_test.py')) {
+        if (
+          entry.name.endsWith('_test.go') ||
+          entry.name.endsWith('_test.py') ||
+          entry.name.endsWith('.test.ts') ||
+          entry.name.endsWith('.test.js') ||
+          entry.name.endsWith('.spec.ts') ||
+          entry.name.endsWith('.spec.js')
+        ) {
           results.push(relPath);
         }
       }
