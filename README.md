@@ -1114,6 +1114,260 @@ degrades further.
 
 ---
 
+## Advanced Guides
+
+### How Promise Extraction Works
+
+Promise extraction is the foundation of drift-guard. Understanding how it works helps you write better CLAUDE.md files and get more accurate quality monitoring.
+
+**Step 1: Source Collection**
+
+When `drift_guard_init` is called, the `PromiseCollector` scans your project for configuration files. By default, it looks at four locations:
+
+| Pattern | Purpose |
+|---------|---------|
+| `CLAUDE.md` | Primary source -- your project's AI coding instructions |
+| `memory/*.md` | Persistent memory files with rules that survive across sessions |
+| `docs/specs/*.md` | Specification documents with architectural decisions |
+| `.drift-guard/config.yaml` | drift-guard's own configuration |
+
+You can add custom sources in `.drift-guard/config.yaml`:
+
+```yaml
+promiseSources:
+  - "docs/architecture.md"
+  - "docs/style-guide.md"
+  - ".cursor/rules/*.md"
+```
+
+**Step 2: LLM-Powered Extraction**
+
+The collected file contents are bundled into an extraction request with this instruction:
+
+> Read these project configuration files and extract all "promises" -- rules, standards, processes, and quality expectations the user wants maintained.
+
+The AI agent receives this instruction and the file contents, then returns a JSON array of promises. Each promise includes:
+
+- **text**: A human-readable description (e.g., "All TypeScript files must have JSDoc comments")
+- **category**: `process`, `style`, `architecture`, `quality`, or `security`
+- **check_type**: How to verify it -- one of the 7 rule-based checks or `llm_eval` for subjective promises
+- **check_config**: Parameters for the check function (e.g., `{ "file": "README.md", "min": 300 }`)
+- **weight**: Importance from 1-10, used in score calculation
+
+**Step 3: Validation and Storage**
+
+The `PromiseCollector.parseExtractionResponse()` method validates the AI's output:
+
+1. Extracts the JSON array from the response (tolerates surrounding text)
+2. Validates each promise's `check_type` against the known set -- unknown types fall back to `llm_eval`
+3. Clamps `weight` to a finite number (defaults to 5 if missing)
+4. Validates `category` against the enum (defaults to `quality` if invalid)
+5. Auto-generates IDs: `promise-001`, `promise-002`, etc.
+
+Promises are saved atomically to `.drift-guard/promises.json` (temp file + rename to prevent corruption).
+
+**Tips for Better Extraction**
+
+- Be explicit in CLAUDE.md: "All exported functions must have JSDoc" extracts better than "write good docs"
+- Use measurable language: "README must have at least 300 lines" maps directly to `min_lines`
+- Group related rules under clear headings -- the LLM uses section structure to determine categories
+- Include your test expectations: "Test files must exist in tests/ directory" maps to `structure_match`
+
+---
+
+### Understanding Quality Scores
+
+drift-guard produces a single score (0-100) that represents how well your project is keeping its promises. Here is how that number is calculated and what it means.
+
+**Score Formula**
+
+```
+score = (earnedWeight / totalWeight) * 100
+```
+
+Each promise has a weight (1-10). When checked:
+
+| Result | Earned Weight | Example |
+|--------|--------------|---------|
+| `pass` | Full weight | Weight 8 promise passing earns 8.0 |
+| `warn` | Half weight (0.5x) | Weight 8 promise warning earns 4.0 |
+| `fail` | Zero | Weight 8 promise failing earns 0.0 |
+
+**Worked Example**
+
+Suppose you have 4 promises:
+
+| Promise | Weight | Result | Earned |
+|---------|--------|--------|--------|
+| README.md exists | 5 | pass | 5.0 |
+| At least 10 test files | 8 | fail | 0.0 |
+| All exports have JSDoc | 6 | warn | 3.0 |
+| src/ directory exists | 3 | pass | 3.0 |
+| **Total** | **22** | | **11.0** |
+
+Score = (11.0 / 22) * 100 = **50.0** -- status: `degraded`
+
+Notice how the weight-8 test file promise failing has a much larger impact than a weight-3 structure check passing. This is intentional -- not all promises are equally important.
+
+**Status Thresholds**
+
+The score maps to a status:
+
+```
+100 ──────── healthy ──────── 80 ──────── warning ──────── 60 ──────── degraded ──────── 40 ──────── critical ──────── 0
+```
+
+These thresholds are configurable in `.drift-guard/config.yaml`. For stricter projects:
+
+```yaml
+thresholds:
+  healthy: 90
+  warning: 75
+  degraded: 50
+```
+
+**Trend Detection**
+
+drift-guard tracks the last 5 scores and computes the average change between consecutive checks:
+
+- **Improving** (avg delta > +2): Score is going up -- your fixes are working
+- **Stable** (avg delta between -2 and +2): Score is holding steady
+- **Declining** (avg delta < -2): Score is dropping -- quality drift is happening
+
+The combination of status + trend drives the recommendation. A "healthy + declining" project gets an early warning before it hits "warning" status.
+
+**Recommendations Matrix**
+
+| Status | Improving | Stable | Declining |
+|--------|-----------|--------|-----------|
+| healthy | Keep up the good work | No action required | Monitor closely |
+| warning | Continue fixes | Address violations | Act now |
+| degraded | -- | Prioritise fixes | Immediate remediation |
+| critical | -- | -- | Stop and fix |
+
+Each recommendation includes the top 3 violations by weight, so you know exactly where to focus.
+
+---
+
+### Real-World Example: Setting Up drift-guard for an AI Coding Project
+
+This walkthrough shows how to set up drift-guard for a real project -- a TypeScript API server being built with Claude Code.
+
+**1. Project Setup**
+
+```bash
+# Your existing project
+cd ~/projects/my-api-server
+
+# Initialize drift-guard
+npx drift-guard init
+```
+
+This creates `.drift-guard/` and adds monitoring instructions to your CLAUDE.md.
+
+**2. Define Your Quality Expectations in CLAUDE.md**
+
+Edit your CLAUDE.md to include measurable quality rules:
+
+```markdown
+# my-api-server
+
+## Code Standards
+- All TypeScript source files must be in src/
+- Every exported function must have JSDoc documentation
+- No file should exceed 400 lines -- split large files into modules
+
+## Testing Requirements
+- Tests must be in tests/ using vitest
+- Maintain at least 20 test files
+- All test files must follow the pattern: *.test.ts
+
+## Project Structure
+- README.md must exist and have at least 200 lines
+- CHANGELOG.md must exist
+- src/ must contain index.ts as the entry point
+- package.json must include "vitest" and "typescript" as dependencies
+
+## Security
+- No secrets in source code
+- All API routes must have input validation
+```
+
+**3. Connect the MCP Server**
+
+Add to your project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "drift-guard": {
+      "command": "npx",
+      "args": ["drift-guard", "serve"]
+    }
+  }
+}
+```
+
+**4. Start a Coding Session**
+
+When you start Claude Code, the agent automatically:
+
+1. Calls `drift_guard_init` -- reads your CLAUDE.md and extracts promises like:
+   - `file_exists: { path: "README.md" }` (weight 5)
+   - `min_lines: { file: "README.md", min: 200 }` (weight 6)
+   - `glob_count: { pattern: "tests/**/*.test.ts", min: 20 }` (weight 8)
+   - `content_match: { file: "package.json", must_contain: ["vitest", "typescript"] }` (weight 7)
+   - `structure_match: { must_have: ["src/", "tests/", "CHANGELOG.md"] }` (weight 5)
+   - `llm_eval: {}` for subjective rules like "no secrets" (weight 9)
+
+2. Calls `drift_guard_track` after creating or modifying files
+
+3. Every 5 tool uses, calls `drift_guard_check`:
+   - Stage 1 runs the 7 rule-based checks instantly (no LLM needed)
+   - If `llm_eval` promises exist, Stage 2 asks the agent to evaluate them
+   - Returns a score, status, trend, and recommendation
+
+**5. Catching Drift in Action**
+
+After 45 minutes of coding, the agent has been focused on implementing API routes and forgot to update the README. The check returns:
+
+```
+Score: 68.5  Status: WARNING  Trend: declining
+Focus on: README.md must have 200+ lines, At least 20 test files
+```
+
+The agent sees this warning and:
+- Updates the README with the new API documentation
+- Writes the missing test files
+- Next check returns: Score 91.0, Status: HEALTHY, Trend: improving
+
+**6. Cross-Session Continuity**
+
+When the session ends, drift-guard saves context:
+
+```markdown
+<!-- saved: 2026-03-26T15:30:00.000Z -->
+Completed auth module with JWT + rate limiting.
+Added 12 API routes in src/routes/.
+Next: implement role-based access control.
+Key decision: using jose library for Edge compatibility.
+```
+
+The next session's `drift_guard_init` restores this context, so the new agent starts with full awareness of previous work and decisions.
+
+**7. CI Integration**
+
+Add a GitHub Actions quality gate:
+
+```yaml
+- name: Quality check
+  run: npx drift-guard check --json --fail-on warning
+```
+
+This blocks PRs that would degrade quality below the warning threshold.
+
+---
+
 ## Troubleshooting
 
 ### "No promises found" error
