@@ -64,4 +64,48 @@ describe('checkTrendCheck', () => {
     expect(result.status).toBe('fail');
     expect(result.detail).toContain('requires');
   });
+
+  it('passes when direction is improving and score went up', () => {
+    const history: QualityReport[] = [makeReport(70), makeReport(85)];
+    const result = checkTrendCheck(
+      makePromise({ check_config: { metric: 'score', direction: 'improving' } }),
+      '/fake',
+      history,
+    );
+    expect(result.status).toBe('pass');
+    expect(result.detail).toContain('improving');
+  });
+
+  it('fails when direction is improving but score stayed flat', () => {
+    const history: QualityReport[] = [makeReport(80), makeReport(80)];
+    const result = checkTrendCheck(
+      makePromise({ check_config: { metric: 'score', direction: 'improving' } }),
+      '/fake',
+      history,
+    );
+    expect(result.status).toBe('fail');
+    expect(result.detail).toContain('not improving');
+  });
+
+  it('warns for unknown direction value', () => {
+    const history: QualityReport[] = [makeReport(80), makeReport(85)];
+    const result = checkTrendCheck(
+      makePromise({ check_config: { metric: 'score', direction: 'some_weird_value' } }),
+      '/fake',
+      history,
+    );
+    expect(result.status).toBe('warn');
+    expect(result.detail).toContain('Unknown direction');
+  });
+
+  it('warns when metric is unknown (non-score) and values are null', () => {
+    const history: QualityReport[] = [makeReport(80), makeReport(85)];
+    const result = checkTrendCheck(
+      makePromise({ check_config: { metric: 'unknown_metric', direction: 'not_declining' } }),
+      '/fake',
+      history,
+    );
+    expect(result.status).toBe('warn');
+    expect(result.detail).toContain('Insufficient data');
+  });
 });

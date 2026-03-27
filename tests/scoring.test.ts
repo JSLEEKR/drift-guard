@@ -4,6 +4,7 @@ import {
   computeScore,
   detectTrend,
   generateRecommendation,
+  topViolationTexts,
 } from '../src/scoring.js';
 import type { CheckResult, DriftPromise } from '../src/types.js';
 
@@ -78,6 +79,18 @@ describe('computeScore', () => {
       makeResult('p2', 'Promise p2', 'warn'),
     ];
     expect(computeScore(results, promises)).toBe(75);
+  });
+
+  it('uses fallback weight of 1 for results with unknown promiseId', () => {
+    const promises = [makePromise('p1', 10)];
+    // 'unknown-id' not in promises → fallback weight=1, fail → 0 earned
+    // 'p1' weight=10, pass → 10 earned
+    // total=11, earned=10, score=10/11*100 ≈ 90.9
+    const results = [
+      makeResult('p1', 'Promise p1', 'pass'),
+      makeResult('unknown-id', 'Unknown', 'fail'),
+    ];
+    expect(computeScore(results, promises)).toBe(90.9);
   });
 });
 
@@ -154,5 +167,114 @@ describe('generateRecommendation', () => {
     expect(rec).toContain('critical');
     expect(rec).toContain('missing README');
     expect(rec).toContain('no tests');
+  });
+
+  it('healthy + improving branch', () => {
+    const rec = generateRecommendation('healthy', 'improving', []);
+    expect(rec).toContain('healthy');
+    expect(rec).toContain('improving');
+  });
+
+  it('healthy + declining branch', () => {
+    const rec = generateRecommendation('healthy', 'declining', []);
+    expect(rec).toContain('healthy');
+    expect(rec).toContain('declining');
+  });
+
+  it('healthy + stable branch', () => {
+    const rec = generateRecommendation('healthy', 'stable', []);
+    expect(rec).toContain('healthy');
+    expect(rec).toContain('No immediate action');
+  });
+
+  it('warning + declining branch', () => {
+    const rec = generateRecommendation('warning', 'declining', []);
+    expect(rec).toContain('warning');
+    expect(rec).toContain('declining');
+  });
+
+  it('warning + improving branch', () => {
+    const rec = generateRecommendation('warning', 'improving', []);
+    expect(rec).toContain('warning');
+    expect(rec).toContain('improving');
+  });
+
+  it('warning + stable branch', () => {
+    const rec = generateRecommendation('warning', 'stable', []);
+    expect(rec).toContain('warning');
+    expect(rec).toContain('Address violations');
+  });
+
+  it('degraded + declining branch', () => {
+    const rec = generateRecommendation('degraded', 'declining', []);
+    expect(rec).toContain('degraded');
+    expect(rec).toContain('declining');
+    expect(rec).toContain('Immediate');
+  });
+
+  it('degraded + stable branch', () => {
+    const rec = generateRecommendation('degraded', 'stable', []);
+    expect(rec).toContain('degraded');
+    expect(rec).toContain('urgently');
+  });
+
+  it('truncates violations to at most 3 in the hint', () => {
+    const rec = generateRecommendation('critical', 'declining', [
+      'v1', 'v2', 'v3', 'v4', 'v5',
+    ]);
+    expect(rec).toContain('v1');
+    expect(rec).toContain('v2');
+    expect(rec).toContain('v3');
+    expect(rec).not.toContain('v4');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// topViolationTexts
+// ---------------------------------------------------------------------------
+
+describe('topViolationTexts', () => {
+  it('returns top violations sorted by weight (highest first)', () => {
+    const promises = [makePromise('p1', 2), makePromise('p2', 8), makePromise('p3', 5)];
+    const results = [
+      makeResult('p1', 'Low weight fail', 'fail'),
+      makeResult('p2', 'High weight warn', 'warn'),
+      makeResult('p3', 'Mid weight fail', 'fail'),
+    ];
+    const top = topViolationTexts(results, promises, 2);
+    expect(top).toHaveLength(2);
+    expect(top[0]).toBe('High weight warn');
+    expect(top[1]).toBe('Mid weight fail');
+  });
+
+  it('excludes passing results', () => {
+    const promises = [makePromise('p1', 10), makePromise('p2', 5)];
+    const results = [
+      makeResult('p1', 'Passing promise', 'pass'),
+      makeResult('p2', 'Failing promise', 'fail'),
+    ];
+    const top = topViolationTexts(results, promises);
+    expect(top).toHaveLength(1);
+    expect(top[0]).toBe('Failing promise');
+  });
+
+  it('returns empty array when no violations exist', () => {
+    const promises = [makePromise('p1', 5)];
+    const results = [makeResult('p1', 'OK', 'pass')];
+    expect(topViolationTexts(results, promises)).toEqual([]);
+  });
+
+  it('defaults to limit of 3', () => {
+    const promises = [
+      makePromise('p1', 1), makePromise('p2', 2),
+      makePromise('p3', 3), makePromise('p4', 4),
+    ];
+    const results = [
+      makeResult('p1', 'V1', 'fail'),
+      makeResult('p2', 'V2', 'fail'),
+      makeResult('p3', 'V3', 'fail'),
+      makeResult('p4', 'V4', 'fail'),
+    ];
+    expect(topViolationTexts(results, promises)).toHaveLength(3);
   });
 });

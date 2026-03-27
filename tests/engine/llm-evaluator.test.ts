@@ -102,5 +102,53 @@ describe('LLMEvaluator', () => {
       expect(result.score).toBe(100);
       expect(result.violations).toHaveLength(0);
     });
+
+    it('extracts JSON from surrounding text', () => {
+      const response = `Here is my analysis:\n${JSON.stringify({
+        score: 92,
+        violations: [
+          {
+            promiseId: 'p1',
+            promiseText: 'Docs complete',
+            status: 'warn',
+            detail: 'Missing API docs',
+            timestamp: '2026-03-26T00:00:00.000Z',
+          },
+        ],
+      })}\nThat concludes my review.`;
+
+      const result = evaluator.parseEvaluationResponse(response);
+
+      expect(result.score).toBe(92);
+      expect(result.violations).toHaveLength(1);
+      expect(result.violations[0].promiseId).toBe('p1');
+    });
+
+    it('returns fail when JSON is missing score field', () => {
+      const response = JSON.stringify({ violations: [] });
+
+      const result = evaluator.parseEvaluationResponse(response);
+
+      expect(result.score).toBe(0);
+      expect(result.violations).toHaveLength(1);
+      expect(result.violations[0].status).toBe('fail');
+      expect(result.violations[0].detail).toContain('Missing score');
+    });
+
+    it('defaults missing violation fields gracefully', () => {
+      const response = JSON.stringify({
+        score: 70,
+        violations: [
+          { somethingElse: true },
+        ],
+      });
+
+      const result = evaluator.parseEvaluationResponse(response);
+
+      expect(result.score).toBe(70);
+      expect(result.violations).toHaveLength(1);
+      expect(result.violations[0].promiseId).toBe('unknown');
+      expect(result.violations[0].status).toBe('fail');
+    });
   });
 });

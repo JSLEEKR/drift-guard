@@ -55,4 +55,32 @@ describe('ContextPreserver', () => {
     // Expect a line like <!-- saved: 2025-01-01T00:00:00.000Z -->
     expect(content).toMatch(/<!-- saved: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z -->/);
   });
+
+  it('exists() returns false before save and true after save', () => {
+    expect(cp.exists()).toBe(false);
+    cp.save('test summary');
+    expect(cp.exists()).toBe(true);
+  });
+
+  it('save with metadata appends key-value lines inside HTML comment', () => {
+    cp.save('session summary', { score: 85, status: 'healthy' });
+    const content = cp.load()!;
+    expect(content).toContain('session summary');
+    expect(content).toContain('<!-- metadata');
+    expect(content).toContain('score: 85');
+    expect(content).toContain('status: "healthy"');
+    expect(content).toContain('-->');
+  });
+
+  it('save without metadata does not include metadata block', () => {
+    cp.save('no meta here');
+    const content = cp.load()!;
+    expect(content).not.toContain('<!-- metadata');
+  });
+
+  it('save with empty metadata object does not include metadata block', () => {
+    cp.save('empty meta', {});
+    const content = cp.load()!;
+    expect(content).not.toContain('<!-- metadata');
+  });
 });
