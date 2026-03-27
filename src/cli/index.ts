@@ -472,6 +472,31 @@ function scanRecentFiles(dir: string, cutoff: number, prefix = ''): string[] {
   return results;
 }
 
+// ── Test file scanner ────────────────────────────────────────────────────
+
+function findTestFiles(dir: string, prefix = ''): string[] {
+  const results: string[] = [];
+  const IGNORE = new Set(['node_modules', '.git', '.drift-guard', 'dist', '__pycache__', '.venv', 'venv', 'vendor']);
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (IGNORE.has(entry.name)) continue;
+      const fullPath = path.join(dir, entry.name);
+      const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        results.push(...findTestFiles(fullPath, relPath));
+      } else if (entry.isFile()) {
+        if (entry.name.endsWith('_test.go') || entry.name.endsWith('_test.py')) {
+          results.push(relPath);
+        }
+      }
+    }
+  } catch {
+    // skip inaccessible directories
+  }
+  return results;
+}
+
 // ── quality-gate ─────────────────────────────────────────────────────────
 
 interface QualityCheck {
@@ -516,11 +541,14 @@ program
       {
         name: 'Tests exist',
         check: () => {
+          // Check for tests/ or test/ directory, OR any *_test.go files, OR *_test.py files
           const testDirs = ['tests', 'test', '__tests__', 'spec'];
-          return testDirs.some((d) => {
+          const hasDirs = testDirs.some((d) => {
             const dirPath = path.join(root, d);
             return fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory();
           });
+          if (hasDirs) return true;
+          return findTestFiles(root).length > 0;
         },
       },
       {

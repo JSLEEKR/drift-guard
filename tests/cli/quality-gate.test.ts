@@ -3,6 +3,30 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTmpDir, cleanupTmpDir } from '../helpers.js';
 
+/** Recursive scan for *_test.go and *_test.py files (mirrors findTestFiles in CLI) */
+function scanForTestFiles(dir: string, prefix = ''): string[] {
+  const results: string[] = [];
+  const IGNORE = new Set(['node_modules', '.git', '.drift-guard', 'dist', '__pycache__', '.venv', 'venv', 'vendor']);
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (IGNORE.has(entry.name)) continue;
+      const fullPath = path.join(dir, entry.name);
+      const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        results.push(...scanForTestFiles(fullPath, relPath));
+      } else if (entry.isFile()) {
+        if (entry.name.endsWith('_test.go') || entry.name.endsWith('_test.py')) {
+          results.push(relPath);
+        }
+      }
+    }
+  } catch {
+    // skip
+  }
+  return results;
+}
+
 describe('quality-gate command logic', () => {
   let tmpDir: string;
 
@@ -65,6 +89,34 @@ describe('quality-gate command logic', () => {
       return fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory();
     });
     expect(hasTestDir).toBe(true);
+  });
+
+  it('detects Go test files (*_test.go) without test directory', () => {
+    // No test directory exists
+    const testDirs = ['tests', 'test', '__tests__', 'spec'];
+    for (const d of testDirs) {
+      expect(fs.existsSync(path.join(tmpDir, d))).toBe(false);
+    }
+
+    // Create Go test files alongside source
+    fs.mkdirSync(path.join(tmpDir, 'pkg', 'handler'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'pkg', 'handler', 'handler.go'), 'package handler\n', 'utf8');
+    fs.writeFileSync(path.join(tmpDir, 'pkg', 'handler', 'handler_test.go'), 'package handler\n', 'utf8');
+
+    // Scan for test files
+    const found = scanForTestFiles(tmpDir);
+    expect(found.length).toBeGreaterThan(0);
+    expect(found.some((f: string) => f.endsWith('_test.go'))).toBe(true);
+  });
+
+  it('detects Python test files (*_test.py) without test directory', () => {
+    fs.mkdirSync(path.join(tmpDir, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'src', 'app.py'), 'print("hi")\n', 'utf8');
+    fs.writeFileSync(path.join(tmpDir, 'src', 'app_test.py'), 'def test_app(): pass\n', 'utf8');
+
+    const found = scanForTestFiles(tmpDir);
+    expect(found.length).toBeGreaterThan(0);
+    expect(found.some((f: string) => f.endsWith('_test.py'))).toBe(true);
   });
 
   it('detects for-the-badge style in README', () => {
