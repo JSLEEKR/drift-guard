@@ -1,36 +1,24 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { StateManager } from '../../src/state/state-manager.js';
 import { History } from '../../src/state/history.js';
 import { ContextPreserver } from '../../src/state/context-preserver.js';
-import type { QualityReport, DriftPromise } from '../../src/types.js';
+import type { DriftPromise } from '../../src/types.js';
+import { createTmpDir, cleanupTmpDir, makeReport } from '../helpers.js';
 
 let tmpDir: string;
 let driftDir: string;
 
-function makeReport(score: number): QualityReport {
-  return {
-    score,
-    status: 'healthy',
-    stage: 1,
-    violations: [],
-    trend: 'stable',
-    recommendation: 'ok',
-    timestamp: new Date().toISOString(),
-  };
-}
-
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dg-err-'));
+  tmpDir = createTmpDir('dg-err-');
   driftDir = path.join(tmpDir, '.drift-guard');
   fs.mkdirSync(driftDir, { recursive: true });
   fs.mkdirSync(path.join(driftDir, 'history'), { recursive: true });
 });
 
 afterEach(() => {
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  cleanupTmpDir(tmpDir);
 });
 
 describe('.drift-guard/ deleted mid-session', () => {

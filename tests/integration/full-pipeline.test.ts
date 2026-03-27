@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { StateManager } from '../../src/state/state-manager.js';
@@ -12,15 +11,12 @@ import {
   detectTrend,
   generateRecommendation,
 } from '../../src/scoring.js';
-import type { DriftPromise, QualityReport } from '../../src/types.js';
+import type { DriftPromise } from '../../src/types.js';
+import { createTmpDir, cleanupTmpDir, makePromise as makeBasePromise } from '../helpers.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function makeTmpDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'drift-guard-int-'));
-}
 
 function makePromise(
   id: string,
@@ -29,27 +25,7 @@ function makePromise(
   text = `Promise ${id}`,
   weight = 1,
 ): DriftPromise {
-  return {
-    id,
-    source: 'test',
-    category: 'quality',
-    text,
-    check_type: checkType,
-    check_config: checkConfig,
-    weight,
-  };
-}
-
-function makeReport(score: number): QualityReport {
-  return {
-    score,
-    status: classifyStatus(score),
-    stage: 1,
-    violations: [],
-    trend: 'stable',
-    recommendation: '',
-    timestamp: new Date().toISOString(),
-  };
+  return makeBasePromise({ id, check_type: checkType, check_config: checkConfig, text, weight });
 }
 
 // ---------------------------------------------------------------------------
@@ -60,11 +36,11 @@ describe('Integration: full drift-guard pipeline', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = makeTmpDir();
+    tmpDir = createTmpDir('drift-guard-int-');
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTmpDir(tmpDir);
   });
 
   // ── Test 1 ─────────────────────────────────────────────────────────────────

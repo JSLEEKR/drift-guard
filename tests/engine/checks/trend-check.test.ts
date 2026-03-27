@@ -1,30 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { checkTrendCheck } from '../../../src/engine/checks/trend-check.js';
-import type { DriftPromise, QualityReport } from '../../../src/types.js';
+import type { QualityReport } from '../../../src/types.js';
+import { makePromise as makeBasePromise, makeReport } from '../../helpers.js';
 
-function makePromise(overrides: Partial<DriftPromise> = {}): DriftPromise {
-  return {
-    id: 'p1',
-    source: 'test',
-    category: 'quality',
+function makePromise(overrides: Parameters<typeof makeBasePromise>[0] = {}) {
+  return makeBasePromise({
     text: 'Score must not decline',
     check_type: 'trend_check',
     check_config: { metric: 'score', direction: 'not_declining' },
     weight: 1,
     ...overrides,
-  };
-}
-
-function makeReport(score: number): QualityReport {
-  return {
-    score,
-    status: 'healthy',
-    stage: 1,
-    violations: [],
-    trend: 'stable',
-    recommendation: '',
-    timestamp: new Date().toISOString(),
-  };
+  });
 }
 
 describe('checkTrendCheck', () => {

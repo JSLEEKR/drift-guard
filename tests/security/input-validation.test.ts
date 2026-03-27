@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { safePath, sanitizeProjectRoot, sanitizeConfig, PathTraversalError } from '../../src/utils/path-safety.js';
 import { checkFileExists } from '../../src/engine/checks/file-exists.js';
 import { checkContentMatch } from '../../src/engine/checks/content-match.js';
@@ -9,30 +8,17 @@ import { checkMinLines } from '../../src/engine/checks/min-lines.js';
 import { checkStructureMatch } from '../../src/engine/checks/structure-match.js';
 import { StateManager } from '../../src/state/state-manager.js';
 import { PromiseCollector } from '../../src/collector/promise-collector.js';
-import type { DriftPromise } from '../../src/types.js';
+import { createTmpDir, cleanupTmpDir, makePromise } from '../helpers.js';
 
 let tmpDir: string;
 
-function makePromise(overrides: Partial<DriftPromise>): DriftPromise {
-  return {
-    id: 'test-001',
-    source: 'test',
-    text: 'test promise',
-    category: 'security',
-    check_type: 'file_exists',
-    check_config: {},
-    weight: 5,
-    ...overrides,
-  };
-}
-
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dg-sec-'));
+  tmpDir = createTmpDir('dg-sec-');
   fs.writeFileSync(path.join(tmpDir, 'legit.txt'), 'hello', 'utf8');
 });
 
 afterEach(() => {
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  cleanupTmpDir(tmpDir);
 });
 
 describe('safePath', () => {

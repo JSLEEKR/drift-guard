@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { shouldFailOn } from '../../src/cli/ci-helpers.js';
@@ -14,27 +13,7 @@ import {
   topViolationTexts,
 } from '../../src/scoring.js';
 import type { DriftPromise, QualityStatus } from '../../src/types.js';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function makeTmpDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'drift-guard-ci-'));
-}
-
-function makePromise(overrides: Partial<DriftPromise> = {}): DriftPromise {
-  return {
-    id: 'p-001',
-    source: 'test',
-    category: 'quality',
-    text: 'README.md must exist',
-    check_type: 'file_exists',
-    check_config: { path: 'README.md' },
-    weight: 5,
-    ...overrides,
-  };
-}
+import { createTmpDir, cleanupTmpDir, makePromise } from '../helpers.js';
 
 // ---------------------------------------------------------------------------
 // shouldFailOn
@@ -86,13 +65,13 @@ describe('CI JSON output structure', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = makeTmpDir();
+    tmpDir = createTmpDir('drift-guard-ci-');
     const sm = new StateManager(tmpDir);
     sm.init();
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTmpDir(tmpDir);
   });
 
   it('produces valid JSON output shape with all expected fields', () => {

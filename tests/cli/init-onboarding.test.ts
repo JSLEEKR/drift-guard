@@ -1,16 +1,8 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { StateManager } from '../../src/state/state-manager.js';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function makeTmpDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'drift-guard-cli-'));
-}
+import { createTmpDir, cleanupTmpDir } from '../helpers.js';
 
 const CLAUDE_MD_INSTRUCTIONS_MARKER = 'drift-guard (Auto Quality Management)';
 
@@ -32,11 +24,11 @@ describe('CLI init onboarding', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = makeTmpDir();
+    tmpDir = createTmpDir('drift-guard-cli-');
   });
 
   afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTmpDir(tmpDir);
   });
 
   // ── init creates .drift-guard directory ─────────────────────────────────
