@@ -7,7 +7,7 @@
 [![GitHub Stars](https://img.shields.io/github/stars/JSLEEKR/drift-guard?style=for-the-badge&logo=github&color=yellow)](https://github.com/JSLEEKR/drift-guard/stargazers)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/typescript-5.4+-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
-[![Tests](https://img.shields.io/badge/tests-206%20passing-brightgreen?style=for-the-badge)](#)
+[![Tests](https://img.shields.io/badge/tests-219%20passing-brightgreen?style=for-the-badge)](#)
 
 <br/>
 
@@ -592,7 +592,8 @@ drift-guard/
 │   │   ├── input-validation.test.ts   # Input validation & sanitization
 │   │   └── error-recovery.test.ts     # Error recovery & graceful degradation
 │   ├── performance/
-│   │   └── benchmarks.test.ts         # Performance benchmarks
+│   │   ├── benchmarks.test.ts         # Performance benchmarks
+│   │   └── stress.test.ts             # Stress tests (200 promises, 1000 history)
 │   └── integration/
 │       └── full-pipeline.test.ts
 ├── package.json
@@ -669,7 +670,7 @@ npx vitest run tests/scoring.test.ts
 npx vitest
 ```
 
-**Test suite:** 206 tests across 21 test files covering:
+**Test suite:** 219 tests across 22 test files covering:
 
 | Module | Coverage |
 |--------|----------|
@@ -693,6 +694,7 @@ npx vitest
 | `input-validation` | Input sanitization, path traversal prevention |
 | `error-recovery` | Graceful degradation, corrupt state handling |
 | `benchmarks` | Performance benchmarks for scoring, engine, state operations |
+| `stress` | Stress tests: 200 promises, 1000 history entries, rapid save/load cycles |
 | `full-pipeline` | End-to-end integration tests |
 
 ---

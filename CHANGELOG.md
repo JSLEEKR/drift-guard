@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-03-26 -- Cycle 2 Complete (Rounds 11-20)
+
+### Added
+- **Stress tests** -- 13 tests validating rule engine with 200 mixed promises, 1000 history entries (write/read/trim/clear/trend), rapid init/check/save cycles (100 iterations, interleaved saves, full pipeline, temp file cleanup)
+- **Real-world integration tests** -- comprehensive tests simulating actual multi-step usage patterns
+- **Advanced user guide** -- promise extraction deep-dive, quality score explanation with worked examples, real-world setup walkthrough, FAQ section
+
+### Changed
+- **Test coverage** expanded from 193 to 219 tests across 22 test files
+- **UX refinements** -- improved CLI output formatting, error messages with actionable hints
+- **Code quality** -- Cycle 1 code review cleanup, test reorganization, naming consistency
+- **Documentation** -- verified doc-code synchronization, updated all examples to match actual behavior
+
+### Security
+- Additional input validation layers and path safety hardening
+- Error handling audit across all filesystem and parsing operations
+- Graceful degradation on every failure path verified
+
+---
+
 ## [0.2.0] - 2026-03-26 -- Cycle 1 Complete (Rounds 1-10)
 
 ### Added
