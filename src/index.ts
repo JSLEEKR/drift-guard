@@ -42,5 +42,8 @@ export { checkGitPattern } from './engine/checks/git-pattern.js';
 export { checkStructureMatch } from './engine/checks/structure-match.js';
 export { checkTrendCheck } from './engine/checks/trend-check.js';
 
+// Utils
+export { safePath, sanitizeProjectRoot, sanitizeConfig, PathTraversalError } from './utils/path-safety.js';
+
 // Server
 export { createServer, startServer } from './server.js';

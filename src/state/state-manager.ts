@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import yaml from 'js-yaml';
 import type { DriftGuardConfig, DriftPromise, TrackEntry } from '../types.js';
+import { sanitizeConfig } from '../utils/path-safety.js';
 
 const DRIFT_DIR = '.drift-guard';
 const PROMISES_FILE = 'promises.json';
@@ -60,18 +61,26 @@ export class StateManager {
     fs.writeFileSync(filePath, yaml.dump(config), 'utf8');
   }
 
-  /** Read config.yaml; return defaults if the file is missing */
+  /** Read config.yaml; return defaults if the file is missing or oversized */
   loadConfig(): Required<DriftGuardConfig> {
     const filePath = path.join(this.driftDir, CONFIG_FILE);
     if (!fs.existsSync(filePath)) return { ...DEFAULT_CONFIG };
     try {
       const raw = fs.readFileSync(filePath, 'utf8');
-      const parsed = yaml.load(raw) as DriftGuardConfig;
+      // Reject oversized YAML (> 64 KB) to prevent YAML bomb attacks
+      if (raw.length > 65_536) {
+        return { ...DEFAULT_CONFIG };
+      }
+      const parsed = yaml.load(raw, { schema: yaml.CORE_SCHEMA }) as DriftGuardConfig;
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        return { ...DEFAULT_CONFIG };
+      }
+      const safe = sanitizeConfig(parsed as unknown as Record<string, unknown>);
       return {
-        thresholds: parsed.thresholds ?? DEFAULT_CONFIG.thresholds,
-        checkInterval: parsed.checkInterval ?? DEFAULT_CONFIG.checkInterval,
-        promiseSources: parsed.promiseSources ?? DEFAULT_CONFIG.promiseSources,
-        ignore: parsed.ignore ?? DEFAULT_CONFIG.ignore,
+        thresholds: (safe['thresholds'] as DriftGuardConfig['thresholds']) ?? DEFAULT_CONFIG.thresholds,
+        checkInterval: (safe['checkInterval'] as number) ?? DEFAULT_CONFIG.checkInterval,
+        promiseSources: (safe['promiseSources'] as string[]) ?? DEFAULT_CONFIG.promiseSources,
+        ignore: (safe['ignore'] as string[]) ?? DEFAULT_CONFIG.ignore,
       };
     } catch {
       return { ...DEFAULT_CONFIG };

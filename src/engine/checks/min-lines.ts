@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CheckResult, DriftPromise } from '../../types.js';
+import { safePath } from '../../utils/path-safety.js';
 
 export function checkMinLines(
   promise: DriftPromise,
@@ -32,7 +33,18 @@ export function checkMinLines(
     };
   }
 
-  const filePath = join(projectRoot, file);
+  let filePath: string;
+  try {
+    filePath = safePath(projectRoot, file);
+  } catch {
+    return {
+      promiseId: promise.id,
+      promiseText: promise.text,
+      status: 'fail',
+      detail: `Path "${file}" is outside the project root (path traversal blocked)`,
+      timestamp,
+    };
+  }
   if (!existsSync(filePath)) {
     return {
       promiseId: promise.id,

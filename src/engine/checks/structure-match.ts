@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CheckResult, DriftPromise } from '../../types.js';
+import { safePath } from '../../utils/path-safety.js';
 
 export function checkStructureMatch(
   promise: DriftPromise,
@@ -24,9 +25,13 @@ export function checkStructureMatch(
   const missing: string[] = [];
   for (const item of mustHave) {
     if (typeof item === 'string') {
-      const fullPath = join(projectRoot, item);
-      if (!existsSync(fullPath)) {
-        missing.push(item);
+      try {
+        const fullPath = safePath(projectRoot, item);
+        if (!existsSync(fullPath)) {
+          missing.push(item);
+        }
+      } catch {
+        missing.push(`${item} (blocked: path traversal)`);
       }
     }
   }

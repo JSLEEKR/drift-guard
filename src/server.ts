@@ -13,6 +13,7 @@ import { History } from './state/history.js';
 import { PromiseCollector } from './collector/promise-collector.js';
 import { RuleEngine } from './engine/rule-engine.js';
 import { LLMEvaluator } from './engine/llm-evaluator.js';
+import { sanitizeProjectRoot, safePath } from './utils/path-safety.js';
 import {
   computeScore,
   classifyStatus,
@@ -173,7 +174,7 @@ export function createServer(): Server {
 // ── Tool handlers ─────────────────────────────────────────────────────────
 
 async function handleInit(args: { projectRoot: string }) {
-  const { projectRoot } = args;
+  const projectRoot = sanitizeProjectRoot(args.projectRoot);
 
   // 1. Init state directory
   const sm = new StateManager(projectRoot);
@@ -199,12 +200,26 @@ async function handleInit(args: { projectRoot: string }) {
 }
 
 async function handleTrack(args: { files: string[]; projectRoot: string }) {
-  const { files, projectRoot } = args;
+  const projectRoot = sanitizeProjectRoot(args.projectRoot);
+  const { files } = args;
   const sm = new StateManager(projectRoot);
   const entries: TrackEntry[] = [];
 
   for (const file of files) {
-    const fullPath = path.isAbsolute(file) ? file : path.join(projectRoot, file);
+    let fullPath: string;
+    try {
+      fullPath = path.isAbsolute(file) ? file : safePath(projectRoot, file);
+      // If absolute, verify it's within project root
+      if (path.isAbsolute(file)) {
+        const resolved = path.resolve(file);
+        const resolvedRoot = path.resolve(projectRoot);
+        if (!resolved.startsWith(resolvedRoot + path.sep) && resolved !== resolvedRoot) {
+          continue; // skip files outside project root
+        }
+      }
+    } catch {
+      continue; // skip path traversal attempts
+    }
     try {
       const stat = fs.statSync(fullPath);
       const content = fs.readFileSync(fullPath, 'utf8');
@@ -246,7 +261,8 @@ async function handleCheck(args: {
     violations: Array<{ promise: string; status: string }>;
   };
 }) {
-  const { workingDir, evaluationResult } = args;
+  const workingDir = sanitizeProjectRoot(args.workingDir);
+  const { evaluationResult } = args;
   const dd = driftDir(workingDir);
   const sm = new StateManager(workingDir);
   const history = new History(dd);
@@ -370,7 +386,8 @@ async function handleCheck(args: {
 }
 
 async function handleSave(args: { summary: string; projectRoot: string }) {
-  const { summary, projectRoot } = args;
+  const projectRoot = sanitizeProjectRoot(args.projectRoot);
+  const { summary } = args;
   const dd = driftDir(projectRoot);
   const cp = new ContextPreserver(dd);
   cp.save(summary);
@@ -386,7 +403,7 @@ async function handleSave(args: { summary: string; projectRoot: string }) {
 }
 
 async function handleReport(args: { workingDir: string }) {
-  const { workingDir } = args;
+  const workingDir = sanitizeProjectRoot(args.workingDir);
   const dd = driftDir(workingDir);
   const history = new History(dd);
   const sm = new StateManager(workingDir);

@@ -1,6 +1,7 @@
 import { existsSync, globSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CheckResult, DriftPromise } from '../../types.js';
+import { safePath } from '../../utils/path-safety.js';
 
 export function checkFileExists(
   promise: DriftPromise,
@@ -36,7 +37,18 @@ export function checkFileExists(
   }
 
   if (typeof config['path'] === 'string') {
-    const filePath = join(projectRoot, config['path'] as string);
+    let filePath: string;
+    try {
+      filePath = safePath(projectRoot, config['path'] as string);
+    } catch {
+      return {
+        promiseId: promise.id,
+        promiseText: promise.text,
+        status: 'fail',
+        detail: `Path "${config['path']}" is outside the project root (path traversal blocked)`,
+        timestamp,
+      };
+    }
     if (existsSync(filePath)) {
       return {
         promiseId: promise.id,
