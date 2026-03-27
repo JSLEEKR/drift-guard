@@ -20,7 +20,7 @@ import {
   generateRecommendation,
   topViolationTexts,
 } from './scoring.js';
-import type { CheckResult, QualityReport, TrackEntry } from './types.js';
+import type { CheckResult, QualityReport, SessionReport, TrackEntry } from './types.js';
 
 const DRIFT_DIR = '.drift-guard';
 
@@ -338,59 +338,34 @@ async function handleCheck(args: {
     };
   }
 
-  // If any fail or there are llm_eval promises, build Stage 2 prompt
-  if (hasLLMPromises || hasFailed) {
-    const llmPromises = promises.filter((p) => p.check_type === 'llm_eval');
-    const evaluator = new LLMEvaluator();
+  // At this point, either hasFailed or hasLLMPromises is true — build Stage 2 prompt
+  const llmPromises = promises.filter((p) => p.check_type === 'llm_eval');
+  const evaluator = new LLMEvaluator();
 
-    // Collect file contents for evaluation
-    const collector = new PromiseCollector();
-    const extraction = await collector.collectSources(workingDir);
-    const fileMap = new Map<string, string>();
-    for (const fc of extraction.fileContents) {
-      fileMap.set(fc.path, fc.content);
-    }
-
-    const evaluationPrompt = evaluator.buildEvaluationPrompt(
-      llmPromises.length > 0 ? llmPromises : promises,
-      fileMap,
-    );
-
-    return {
-      content: [
-        {
-          type: 'text' as const,
-          text: JSON.stringify({
-            needsEvaluation: true,
-            evaluationPrompt,
-            stage1Results: ruleResults,
-          }),
-        },
-      ],
-    };
+  // Collect file contents for evaluation
+  const collector = new PromiseCollector();
+  const extraction = await collector.collectSources(workingDir);
+  const fileMap = new Map<string, string>();
+  for (const fc of extraction.fileContents) {
+    fileMap.set(fc.path, fc.content);
   }
 
-  // Fallback: healthy report from rules only
-  const score = computeScore(ruleResults, promises);
-  const status = classifyStatus(score);
-  const trend = detectTrend([...scoreHistory, score]);
-  const topViolations = topViolationTexts(ruleResults, promises);
-  const recommendation = generateRecommendation(status, trend, topViolations);
-
-  const report: QualityReport = {
-    score,
-    status,
-    stage: 1,
-    violations: ruleResults.filter((r) => r.status !== 'pass'),
-    trend,
-    recommendation,
-    timestamp: new Date().toISOString(),
-  };
-
-  history.addCheck(report);
+  const evaluationPrompt = evaluator.buildEvaluationPrompt(
+    llmPromises.length > 0 ? llmPromises : promises,
+    fileMap,
+  );
 
   return {
-    content: [{ type: 'text' as const, text: JSON.stringify(report) }],
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify({
+          needsEvaluation: true,
+          evaluationPrompt,
+          stage1Results: ruleResults,
+        }),
+      },
+    ],
   };
 }
 
@@ -418,19 +393,20 @@ async function handleReport(args: { workingDir: string }) {
   const reports = history.getHistory();
 
   if (reports.length === 0) {
+    const emptyReport: SessionReport = {
+      startScore: 100,
+      endScore: 100,
+      drift: 0,
+      totalChecks: 0,
+      violations: 0,
+      topViolations: [],
+      recommendation: 'No checks have been run yet.',
+    };
     return {
       content: [
         {
           type: 'text' as const,
-          text: JSON.stringify({
-            startScore: 100,
-            endScore: 100,
-            drift: 0,
-            totalChecks: 0,
-            violations: 0,
-            topViolations: [],
-            recommendation: 'No checks have been run yet.',
-          }),
+          text: JSON.stringify(emptyReport),
         },
       ],
     };
@@ -448,7 +424,7 @@ async function handleReport(args: { workingDir: string }) {
   const trend = detectTrend(reports.map((r) => r.score));
   const recommendation = generateRecommendation(status, trend, topViolations);
 
-  const sessionReport = {
+  const sessionReport: SessionReport = {
     startScore,
     endScore,
     drift,
