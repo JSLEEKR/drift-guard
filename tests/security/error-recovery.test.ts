@@ -122,12 +122,15 @@ describe('promises.json corrupted between checks', () => {
   it('returns [] when promises.json contains non-array JSON', () => {
     const sm = new StateManager(tmpDir);
     fs.writeFileSync(path.join(driftDir, 'promises.json'), '{"not":"array"}', 'utf8');
-    // JSON.parse succeeds but result is not an array -- currently returns as-is
-    // This is a potential issue but loadPromises returns whatever JSON.parse gives
     const result = sm.loadPromises();
-    // The current implementation casts to DriftPromise[], this is OK since
-    // downstream code iterates with .filter/.map which won't crash on objects
-    expect(result).toBeDefined();
+    expect(result).toEqual([]);
+  });
+
+  it('returns [] when promises.json contains a numeric JSON value', () => {
+    const sm = new StateManager(tmpDir);
+    fs.writeFileSync(path.join(driftDir, 'promises.json'), '42', 'utf8');
+    const result = sm.loadPromises();
+    expect(result).toEqual([]);
   });
 
   it('overwrites corrupted promises.json on next save', () => {

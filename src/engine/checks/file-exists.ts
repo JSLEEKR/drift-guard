@@ -1,5 +1,4 @@
 import { existsSync, globSync } from 'node:fs';
-import { join } from 'node:path';
 import type { CheckResult, DriftPromise } from '../../types.js';
 import { safePath } from '../../utils/path-safety.js';
 

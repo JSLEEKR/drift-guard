@@ -97,6 +97,22 @@ describe('sanitizeConfig', () => {
     const result = sanitizeConfig({ promiseSources: bigArray });
     expect((result['promiseSources'] as string[]).length).toBe(100);
   });
+
+  it('ignores non-object thresholds value', () => {
+    const result = sanitizeConfig({ thresholds: 'not-an-object' });
+    expect(result['thresholds']).toBeUndefined();
+  });
+
+  it('ignores array thresholds value', () => {
+    const result = sanitizeConfig({ thresholds: [80, 60, 40] });
+    expect(result['thresholds']).toBeUndefined();
+  });
+
+  it('truncates individual source strings to 500 chars', () => {
+    const longSource = 'a'.repeat(600);
+    const result = sanitizeConfig({ promiseSources: [longSource] });
+    expect((result['promiseSources'] as string[])[0].length).toBe(500);
+  });
 });
 
 describe('checkFileExists blocks path traversal', () => {

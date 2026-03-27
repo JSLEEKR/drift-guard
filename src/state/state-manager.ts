@@ -42,13 +42,15 @@ export class StateManager {
     fs.renameSync(tmp, dest);
   }
 
-  /** Read promises.json; return [] if the file is missing or corrupted */
+  /** Read promises.json; return [] if the file is missing, corrupted, or not an array */
   loadPromises(): DriftPromise[] {
     const filePath = path.join(this.driftDir, PROMISES_FILE);
     if (!fs.existsSync(filePath)) return [];
     try {
       const raw = fs.readFileSync(filePath, 'utf8');
-      return JSON.parse(raw) as DriftPromise[];
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return [];
+      return parsed as DriftPromise[];
     } catch {
       return [];
     }
