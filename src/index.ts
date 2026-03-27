@@ -30,6 +30,10 @@ export { History } from './state/history.js';
 
 // Engine
 export { RuleEngine } from './engine/rule-engine.js';
+export { LLMEvaluator } from './engine/llm-evaluator.js';
+
+// Collector
+export { PromiseCollector } from './collector/promise-collector.js';
 export { checkFileExists } from './engine/checks/file-exists.js';
 export { checkContentMatch } from './engine/checks/content-match.js';
 export { checkMinLines } from './engine/checks/min-lines.js';
