@@ -789,14 +789,196 @@ cp.exists();                         // Check if context.md exists
 
 ---
 
-## Future Extensions
+## Cross-Tool Integration
 
-### Codex Integration
+drift-guard is designed to work with any AI coding tool, not just Claude Code. Below are configuration examples for each supported tool.
 
-drift-guard's MCP interface is tool-agnostic. Future versions will support:
+### Claude Code (MCP native)
 
-- **OpenAI Codex** -- monitor Codex agent sessions for quality drift
-- **Cursor** -- integrate with Cursor's AI pair programming to track code quality across edits
+Claude Code natively supports MCP servers. Add drift-guard to your project-level `.mcp.json` or user-level `~/.claude/settings.json`:
+
+**Project-level** (`.mcp.json` in project root -- recommended):
+
+```json
+{
+  "mcpServers": {
+    "drift-guard": {
+      "command": "npx",
+      "args": ["drift-guard", "serve"]
+    }
+  }
+}
+```
+
+**User-level** (`~/.claude/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "drift-guard": {
+      "command": "npx",
+      "args": ["drift-guard", "serve"],
+      "env": {}
+    }
+  }
+}
+```
+
+Once configured, Claude Code automatically discovers the 5 MCP tools (`drift_guard_init`, `drift_guard_track`, `drift_guard_check`, `drift_guard_save`, `drift_guard_report`). Add the CLAUDE.md instructions (via `drift-guard init`) to have the agent call them automatically.
+
+### OpenAI Codex
+
+Codex does not natively support MCP, but drift-guard can be used via the CLI in Codex sessions:
+
+1. Add drift-guard checks to your project's task instructions:
+
+```
+Before completing this task, run:
+  npx drift-guard check --json --fail-on warning
+If the check fails, fix the violations before submitting.
+```
+
+2. For programmatic integration, use drift-guard's Node.js API (see [Programmatic Usage](#programmatic-usage) below).
+
+3. When MCP support is added to Codex, the same `npx drift-guard serve` command will work -- the MCP protocol is tool-agnostic.
+
+### Cursor
+
+Cursor supports MCP servers. Add drift-guard to your Cursor MCP configuration:
+
+1. Open Cursor Settings > MCP
+2. Add a new server with:
+   - **Name:** `drift-guard`
+   - **Command:** `npx drift-guard serve`
+   - **Transport:** stdio
+
+Or add to `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "drift-guard": {
+      "command": "npx",
+      "args": ["drift-guard", "serve"]
+    }
+  }
+}
+```
+
+The 5 MCP tools will appear in Cursor's tool list. Use the CLAUDE.md instructions (or equivalent Cursor rules) to automate quality monitoring.
+
+### Any MCP-Compatible Tool
+
+drift-guard uses the standard MCP stdio transport. Any tool that supports MCP can connect:
+
+```bash
+# Start the server (stdin/stdout communication)
+npx drift-guard serve
+```
+
+The server exposes these tool schemas:
+
+| Tool | Required Args | Optional Args | Returns |
+|------|--------------|---------------|---------|
+| `drift_guard_init` | `projectRoot: string` | -- | instruction, fileContents, restoredContext |
+| `drift_guard_track` | `files: string[]`, `projectRoot: string` | -- | tracked count |
+| `drift_guard_check` | `workingDir: string` | `evaluationResult: { score, violations }` | QualityReport or evaluation prompt |
+| `drift_guard_save` | `summary: string`, `projectRoot: string` | -- | saved confirmation |
+| `drift_guard_report` | `workingDir: string` | -- | SessionReport |
+
+---
+
+## Programmatic Usage
+
+drift-guard exports all core modules for use as a library in your own tools, scripts, or CI pipelines:
+
+```typescript
+import {
+  StateManager,
+  RuleEngine,
+  History,
+  computeScore,
+  classifyStatus,
+  detectTrend,
+  generateRecommendation,
+  topViolationTexts,
+  shouldFailOn,
+  type DriftPromise,
+  type QualityReport,
+} from 'drift-guard';
+
+// --- Example: Run a quality check programmatically ---
+
+const projectRoot = '/path/to/my/project';
+
+// 1. Load promises from .drift-guard/promises.json
+const sm = new StateManager(projectRoot);
+const promises = sm.loadPromises();
+
+// 2. Run rule engine checks
+const engine = new RuleEngine();
+const history = new History(`${projectRoot}/.drift-guard`);
+const results = engine.runAll(promises, projectRoot, history.getHistory());
+
+// 3. Compute score and status
+const score = computeScore(results, promises);
+const status = classifyStatus(score);
+const trend = detectTrend([...history.getScoreHistory(), score]);
+const violations = topViolationTexts(results, promises);
+const recommendation = generateRecommendation(status, trend, violations);
+
+console.log(`Score: ${score}, Status: ${status}, Trend: ${trend}`);
+console.log(`Recommendation: ${recommendation}`);
+
+// 4. Use in CI: determine exit code
+if (shouldFailOn(status, 'warning')) {
+  process.exit(1);
+}
+```
+
+```typescript
+// --- Example: Create promises programmatically ---
+
+import { StateManager, type DriftPromise } from 'drift-guard';
+
+const sm = new StateManager('/path/to/project');
+sm.init();
+
+const promises: DriftPromise[] = [
+  {
+    id: 'p-001',
+    source: 'custom-script',
+    category: 'quality',
+    text: 'README.md must exist',
+    check_type: 'file_exists',
+    check_config: { path: 'README.md' },
+    weight: 5,
+  },
+  {
+    id: 'p-002',
+    source: 'custom-script',
+    category: 'quality',
+    text: 'At least 50 test files',
+    check_type: 'glob_count',
+    check_config: { pattern: 'tests/**/*.test.ts', min: 50 },
+    weight: 8,
+  },
+];
+
+sm.savePromises(promises);
+```
+
+```typescript
+// --- Example: Embed drift-guard in a custom MCP server ---
+
+import { createServer } from 'drift-guard';
+
+const server = createServer();
+// server is a standard @modelcontextprotocol/sdk Server instance
+// Connect it to any MCP transport (stdio, SSE, etc.)
+```
+
+---
 
 ### GitHub Actions
 
@@ -995,7 +1177,10 @@ A: Edit `.drift-guard/promises.json` directly. Each promise needs an `id`, `sour
 A: It is safe to commit. The config and promises are portable. History files are small JSON snapshots. Add `.drift-guard/context.md` to `.gitignore` if you don't want session context shared across developers.
 
 **Q: Can I run drift-guard in CI?**
-A: Yes. Use `drift-guard check` in your CI pipeline. It exits with code 1 when quality is `degraded` or `critical`, making it suitable as a quality gate.
+A: Yes. Use `drift-guard check --json --fail-on warning` in your CI pipeline. The `--json` flag outputs machine-readable results, and `--fail-on` controls which status threshold triggers a non-zero exit code. See the [GitHub Actions](#github-actions) section for a complete workflow example.
+
+**Q: Can I use drift-guard with Cursor or Codex?**
+A: Yes. Cursor supports MCP servers natively -- add drift-guard the same way you would for Claude Code. For Codex, use the CLI or programmatic API. See [Cross-Tool Integration](#cross-tool-integration) for details.
 
 ---
 
