@@ -376,7 +376,7 @@ drift-guard check [--project-root <path>] [--json] [--fail-on <status>]
 | `--json` | Output results as JSON for CI pipelines |
 | `--fail-on <status>` | Exit with code 1 if status meets or exceeds threshold (`warning`, `degraded`, `critical`) |
 
-Outputs a formatted table of promise checks with pass/warn/fail status, score, trend, and recommendation. Exits with code 1 if status is degraded or critical (default), or at the `--fail-on` threshold.
+Outputs a formatted table of promise checks with pass/warn/fail status, score, trend, and recommendation. By default, exits with code 1 if status is `degraded` or `critical`. Use `--fail-on warning` to fail earlier, or `--fail-on critical` to only fail on critical.
 
 **JSON output shape:**
 
@@ -544,7 +544,8 @@ drift-guard/
 │   ├── types.ts                    # TypeScript interfaces & types
 │   ├── scoring.ts                  # Score computation, status, trend, recommendations
 │   ├── cli/
-│   │   └── index.ts                # CLI commands (init, serve, check, report, promises)
+│   │   ├── index.ts                # CLI commands (init, serve, check, report, promises)
+│   │   └── ci-helpers.ts           # CI exit-code logic for --fail-on
 │   ├── collector/
 │   │   └── promise-collector.ts    # Source file collection & promise parsing
 │   ├── engine/
@@ -558,6 +559,8 @@ drift-guard/
 │   │       ├── git-pattern.ts      # git_pattern check
 │   │       ├── structure-match.ts  # structure_match check
 │   │       └── trend-check.ts      # trend_check check
+│   ├── utils/
+│   │   └── path-safety.ts             # Path traversal prevention
 │   └── state/
 │       ├── state-manager.ts        # .drift-guard/ directory, promises.json, config.yaml
 │       ├── context-preserver.ts    # context.md save/load for session continuity
@@ -582,7 +585,14 @@ drift-guard/
 │   │   ├── context-preserver.test.ts
 │   │   └── history.test.ts
 │   ├── cli/
-│   │   └── init-onboarding.test.ts    # CLI init & onboarding tests
+│   │   ├── init-onboarding.test.ts    # CLI init & onboarding tests
+│   │   ├── ci-integration.test.ts     # CI pipeline integration tests
+│   │   └── readme-docs.test.ts        # README & documentation tests
+│   ├── security/
+│   │   ├── input-validation.test.ts   # Input validation & sanitization
+│   │   └── error-recovery.test.ts     # Error recovery & graceful degradation
+│   ├── performance/
+│   │   └── benchmarks.test.ts         # Performance benchmarks
 │   └── integration/
 │       └── full-pipeline.test.ts
 ├── package.json
@@ -659,10 +669,10 @@ npx vitest run tests/scoring.test.ts
 npx vitest
 ```
 
-**Test suite:** 98 tests across 16 test files covering:
+**Test suite:** 193 tests across 21 test files covering:
 
-| Module | Tests | Coverage |
-|--------|-------|----------|
+| Module | Coverage |
+|--------|----------|
 | `scoring` | Score computation, status classification, trend detection, recommendations |
 | `promise-collector` | Source collection, extraction response parsing, pattern resolution |
 | `rule-engine` | Check dispatching, LLM promise filtering |
@@ -677,7 +687,12 @@ npx vitest
 | `state-manager` | Directory init, promises CRUD, config CRUD, track snapshots |
 | `context-preserver` | Context save/load/exists with metadata |
 | `history` | Check history CRUD, trimming, clearing |
-| `init-onboarding` | CLI init, config defaults, CLAUDE.md injection, idempotency, package.json fields |
+| `init-onboarding` | CLI init, config defaults, CLAUDE.md injection, idempotency |
+| `ci-integration` | CI pipeline integration, `--json` and `--fail-on` flag behavior |
+| `readme-docs` | README content verification, documentation accuracy |
+| `input-validation` | Input sanitization, path traversal prevention |
+| `error-recovery` | Graceful degradation, corrupt state handling |
+| `benchmarks` | Performance benchmarks for scoring, engine, state operations |
 | `full-pipeline` | End-to-end integration tests |
 
 ---

@@ -140,7 +140,7 @@ program
   .description('Manual quality check (Stage 1 rule engine only)')
   .option('--project-root <path>', 'Project root directory', '.')
   .option('--json', 'Output results as JSON (CI-friendly)')
-  .option('--fail-on <status>', 'Exit with code 1 if status meets or exceeds threshold (warning, degraded, critical)', '')
+  .option('--fail-on <status>', 'Exit code 1 at this status threshold: warning, degraded, or critical (default: degraded)', '')
   .action((options: { projectRoot: string; json?: boolean; failOn?: string }) => {
     const projectRoot = path.resolve(options.projectRoot);
     const driftDir = path.join(projectRoot, DRIFT_DIR);
