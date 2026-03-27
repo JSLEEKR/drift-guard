@@ -7,7 +7,7 @@
 [![GitHub Stars](https://img.shields.io/github/stars/JSLEEKR/drift-guard?style=for-the-badge&logo=github&color=yellow)](https://github.com/JSLEEKR/drift-guard/stargazers)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/typescript-5.4+-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
-[![Tests](https://img.shields.io/badge/tests-90%20passing-brightgreen?style=for-the-badge)](#)
+[![Tests](https://img.shields.io/badge/tests-98%20passing-brightgreen?style=for-the-badge)](#)
 
 <br/>
 
@@ -550,6 +550,8 @@ drift-guard/
 │   │   ├── state-manager.test.ts
 │   │   ├── context-preserver.test.ts
 │   │   └── history.test.ts
+│   ├── cli/
+│   │   └── init-onboarding.test.ts    # CLI init & onboarding tests
 │   └── integration/
 │       └── full-pipeline.test.ts
 ├── package.json
@@ -626,7 +628,7 @@ npx vitest run tests/scoring.test.ts
 npx vitest
 ```
 
-**Test suite:** 90 tests across 15 test files covering:
+**Test suite:** 98 tests across 16 test files covering:
 
 | Module | Tests | Coverage |
 |--------|-------|----------|
@@ -644,6 +646,7 @@ npx vitest
 | `state-manager` | Directory init, promises CRUD, config CRUD, track snapshots |
 | `context-preserver` | Context save/load/exists with metadata |
 | `history` | Check history CRUD, trimming, clearing |
+| `init-onboarding` | CLI init, config defaults, CLAUDE.md injection, idempotency, package.json fields |
 | `full-pipeline` | End-to-end integration tests |
 
 ---
@@ -783,6 +786,149 @@ drift-guard's MCP interface is tool-agnostic. Future versions will support:
 - **Slack/Discord alerts** -- notify when quality drops below threshold
 - **Git hook integration** -- block commits when quality is degraded
 - **Promise diff** -- detect when CLAUDE.md changes invalidate existing promises
+
+---
+
+## When to Use This
+
+| Scenario | Without drift-guard | With drift-guard |
+|----------|-------------------|-----------------|
+| **Long coding session (2+ hours)** | Agent silently forgets early instructions, ships inconsistent code | Continuous monitoring catches drift before it compounds |
+| **Multi-file refactoring** | Agent loses track of which files need updates, leaves stale code | Promise checks verify all required files exist and meet standards |
+| **Team with CLAUDE.md standards** | No way to verify the agent follows team rules | Promises extracted from CLAUDE.md are automatically enforced |
+| **Cross-session projects** | Agent starts fresh each session, repeats mistakes | Context preservation carries decisions and progress forward |
+| **CI/CD quality gates** | Manual review is the only safety net | `drift-guard check` exits non-zero when quality drops below threshold |
+| **Agent switching mid-task** | New agent has zero context about previous work | Saved context restores full awareness of prior decisions |
+
+---
+
+## Example Output
+
+### `drift-guard check`
+
+```
+drift-guard Quality Check
+────────────────────────────────────────────────────────────────
+
+Promise                                Status
+────────────────────────────────────────────────────────────────
+README.md must exist                   PASS
+README.md must have 300+ lines         WARN
+  → File has 247 lines, expected >= 300
+All exports must have JSDoc            PASS
+Tests directory must exist             PASS
+At least 10 test files required        FAIL
+  → Found 7 files matching tests/**/*.test.ts, expected >= 10
+Git repo must have 5+ commits          PASS
+────────────────────────────────────────────────────────────────
+Score: 72.5  Status: WARNING
+Trend: declining  Recommendation: Quality is in warning and declining — act
+now before it degrades further. Focus on: At least 10 test files required,
+README.md must have 300+ lines.
+```
+
+### `drift-guard report`
+
+```
+drift-guard Session Report
+────────────────────────────────────────────────────────────────
+Total checks  : 5
+Start score   : 100.0
+End score     : 72.5
+Drift         : -27.5
+Violations    : 3
+Status        : WARNING
+Trend         : declining
+
+Top violations:
+  • At least 10 test files required
+  • README.md must have 300+ lines
+
+Recommendation: Quality is in warning and declining — act now before it
+degrades further.
+```
+
+---
+
+## Troubleshooting
+
+### "No promises found" error
+
+**Cause:** drift-guard needs promises to be extracted from your project files before it can run checks.
+
+**Fix:**
+1. Run `drift-guard init` to set up the project
+2. Start the MCP server: `npx drift-guard serve`
+3. The AI agent will call `drift_guard_init` and extract promises from your CLAUDE.md and config files
+4. Promises are saved to `.drift-guard/promises.json`
+
+You can verify with: `drift-guard promises`
+
+### MCP server won't start
+
+**Cause:** Usually a Node.js version issue or missing build step.
+
+**Fix:**
+1. Verify Node.js >= 18: `node --version`
+2. Build the project: `npm run build`
+3. Try running directly: `npx drift-guard serve`
+
+### Score is always 100
+
+**Cause:** Either no promises are extracted, or all promises are passing.
+
+**Fix:**
+1. Check if promises exist: `drift-guard promises`
+2. If empty, re-run the init flow via MCP (see "No promises found" above)
+3. If promises exist but all pass, your project is in great shape
+
+### Checks don't detect my CLAUDE.md changes
+
+**Cause:** Promises are extracted once and cached in `.drift-guard/promises.json`. Editing CLAUDE.md does not auto-update promises.
+
+**Fix:**
+1. Delete `.drift-guard/promises.json`
+2. Re-run the MCP init flow so the agent re-extracts promises
+3. Or manually edit `.drift-guard/promises.json` to add/update promises
+
+### drift-guard slows down my workflow
+
+**Cause:** The `git_pattern` check spawns a git subprocess, and `llm_eval` requires an AI roundtrip.
+
+**Fix:**
+1. Reduce check frequency in `.drift-guard/config.yaml`: set `checkInterval` higher
+2. Convert `llm_eval` promises to rule-based checks where possible
+3. The rule engine (Stage 1) is fast — only Stage 2 (LLM) adds latency
+
+### How do I reset drift-guard?
+
+Delete the `.drift-guard/` directory to start fresh:
+
+```bash
+rm -rf .drift-guard
+drift-guard init
+```
+
+This clears all history, promises, config, and saved context.
+
+---
+
+## FAQ
+
+**Q: Does drift-guard send my code to an external server?**
+A: No. drift-guard runs entirely locally. The MCP server uses stdio transport (stdin/stdout) — no network calls. The only external call happens when the AI agent evaluates `llm_eval` promises, and that uses whatever LLM the agent is already connected to.
+
+**Q: Can I use drift-guard without Claude Code?**
+A: Yes. The CLI commands (`init`, `check`, `report`, `promises`) work standalone. The MCP server integration adds automatic monitoring, but manual checks work without it.
+
+**Q: How do I add custom promises?**
+A: Edit `.drift-guard/promises.json` directly. Each promise needs an `id`, `source`, `category`, `text`, `check_type`, `check_config`, and `weight`. See the [Promise Types](#promise-types) section for the full schema.
+
+**Q: What happens if .drift-guard/ is committed to git?**
+A: It is safe to commit. The config and promises are portable. History files are small JSON snapshots. Add `.drift-guard/context.md` to `.gitignore` if you don't want session context shared across developers.
+
+**Q: Can I run drift-guard in CI?**
+A: Yes. Use `drift-guard check` in your CI pipeline. It exits with code 1 when quality is `degraded` or `critical`, making it suitable as a quality gate.
 
 ---
 
