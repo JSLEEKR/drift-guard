@@ -123,7 +123,7 @@ export class PromiseCollector {
             : 'llm_eval';
 
           const rawWeight = typeof item['weight'] === 'number' ? item['weight'] : 5;
-          const weight = Number.isFinite(rawWeight) ? rawWeight : 5;
+          const weight = Number.isFinite(rawWeight) ? Math.max(1, Math.min(10, rawWeight)) : 5;
 
           const rawCategory = typeof item['category'] === 'string' ? item['category'] : 'quality';
           const category = (
