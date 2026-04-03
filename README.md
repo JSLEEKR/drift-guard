@@ -7,7 +7,7 @@
 [![GitHub Stars](https://img.shields.io/github/stars/JSLEEKR/drift-guard?style=for-the-badge&logo=github&color=yellow)](https://github.com/JSLEEKR/drift-guard/stargazers)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/typescript-5.4+-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
-[![Tests](https://img.shields.io/badge/tests-219%20passing-brightgreen?style=for-the-badge)](#)
+[![Tests](https://img.shields.io/badge/tests-247%20passing-brightgreen?style=for-the-badge)](#)
 
 <br/>
 
@@ -48,11 +48,10 @@ drift-guard operates as a three-layer quality pipeline that runs alongside your 
                               │   Promise     │
                               │   Extraction  │
                               │               │
-                              │  Reads config │
-                              │  files and    │
-                              │  asks LLM to  │
-                              │  extract      │
-                              │  promises     │
+                              │  Auto-extract │
+                              │  from CLAUDE  │
+                              │  .md using    │
+                              │  patterns     │
                               └───────┬───────┘
                                       │
                               ┌───────▼───────┐
@@ -128,7 +127,7 @@ Session Start ──► drift_guard_init ──► Extract promises from CLAUDE.
 
 | Feature | Description |
 |---------|-------------|
-| **Promise Extraction** | Automatically reads CLAUDE.md, memory files, and specs to identify quality promises |
+| **Auto Promise Extraction** | Pattern-based extraction from CLAUDE.md on init — no AI delegation, works immediately |
 | **7 Rule-Based Checks** | `file_exists`, `min_lines`, `content_match`, `glob_count`, `git_pattern`, `structure_match`, `trend_check` |
 | **LLM Evaluation** | Complex promises evaluated by AI when rule checks cannot cover them |
 | **Two-Stage Pipeline** | Fast local rules first, AI evaluation only when needed |
@@ -187,7 +186,7 @@ drift-guard exposes 5 tools via the Model Context Protocol:
 
 ### `drift_guard_init`
 
-Initialize drift-guard for a project. Collects source files for promise extraction and restores previous session context.
+Initialize drift-guard for a project. Auto-extracts quality promises from CLAUDE.md using pattern matching, runs a baseline check, and restores previous session context.
 
 **Input:**
 ```json
@@ -199,16 +198,18 @@ Initialize drift-guard for a project. Collects source files for promise extracti
 **Output:**
 ```json
 {
-  "instruction": "Read these project configuration files and extract all promises...",
-  "fileContents": [
-    { "path": "CLAUDE.md", "content": "..." },
-    { "path": "memory/rules.md", "content": "..." }
+  "promisesExtracted": 12,
+  "totalPromises": 12,
+  "baselineScore": 85.0,
+  "baselineStatus": "healthy",
+  "violations": [
+    { "promise": "README.md must have at least 300 lines", "status": "fail", "detail": "README.md has 45 lines (min 300)" }
   ],
   "restoredContext": "<!-- saved: 2026-03-25T... -->\nPrevious session summary..."
 }
 ```
 
-The agent uses the `instruction` and `fileContents` to extract promises, then saves them via the state manager.
+Promises are automatically extracted from CLAUDE.md patterns (README line counts, eval rules, safety hooks, structural files) and saved to `.drift-guard/promises.json`. No AI delegation needed — works immediately on init.
 
 ---
 
