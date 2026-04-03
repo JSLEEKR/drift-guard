@@ -42,7 +42,7 @@ export function createServer(): Server {
       {
         name: 'drift_guard_init',
         description:
-          'Initialise drift-guard for a project: create .drift-guard/, collect source files for promise extraction, and restore previous session context.',
+          'Initialise drift-guard for a project: create .drift-guard/, auto-extract quality promises from CLAUDE.md, run baseline check, and restore previous session context.',
         inputSchema: {
           type: 'object' as const,
           properties: {
@@ -180,17 +180,41 @@ async function handleInit(args: { projectRoot: string }) {
   const sm = new StateManager(projectRoot);
   sm.init();
 
-  // 2. Collect sources
-  const collector = new PromiseCollector();
-  const extraction = await collector.collectSources(projectRoot);
+  // 2. Load config to get custom promise sources
+  const config = sm.loadConfig();
+  const customSources = config.promiseSources.length > 0 ? config.promiseSources : undefined;
 
-  // 3. Check for previous context
+  // 3. Auto-extract promises from project files (pattern-based, no AI needed)
+  const collector = new PromiseCollector();
+  const promises = collector.autoExtract(projectRoot, customSources);
+
+  // 4. Save promises (merge with any existing manually-added promises)
+  const existing = sm.loadPromises();
+  const manualPromises = existing.filter((p) => p.source === 'manual');
+  const allPromises = [...promises, ...manualPromises];
+  sm.savePromises(allPromises);
+
+  // 5. Check for previous context
   const cp = new ContextPreserver(driftDir(projectRoot));
   const restoredContext = cp.exists() ? cp.load() : null;
 
+  // 6. Run an initial check to get baseline score
+  const history = new History(driftDir(projectRoot));
+  const engine = new RuleEngine();
+  const ruleResults = engine.runAll(allPromises, projectRoot, history.getHistory());
+  const score = computeScore(ruleResults, allPromises);
+  const status = classifyStatus(score);
+
   const result = {
-    instruction: extraction.instruction,
-    fileContents: extraction.fileContents,
+    promisesExtracted: promises.length,
+    totalPromises: allPromises.length,
+    baselineScore: score,
+    baselineStatus: status,
+    violations: ruleResults.filter((r) => r.status !== 'pass').map((r) => ({
+      promise: r.promiseText,
+      status: r.status,
+      detail: r.detail,
+    })),
     restoredContext,
   };
 
@@ -266,19 +290,32 @@ async function handleCheck(args: {
   const dd = driftDir(workingDir);
   const sm = new StateManager(workingDir);
   const history = new History(dd);
-  const promises = sm.loadPromises();
+  let promises = sm.loadPromises();
+
+  // Auto-extract if no promises exist (fallback)
+  if (promises.length === 0) {
+    const collector = new PromiseCollector();
+    const config = sm.loadConfig();
+    const customSources = config.promiseSources.length > 0 ? config.promiseSources : undefined;
+    promises = collector.autoExtract(workingDir, customSources);
+    if (promises.length > 0) {
+      sm.savePromises(promises);
+    }
+  }
 
   if (promises.length === 0) {
+    // Still no promises — return a healthy default
+    const report: QualityReport = {
+      score: 100,
+      status: 'healthy',
+      stage: 1,
+      violations: [],
+      trend: 'stable',
+      recommendation: 'No promises to check. Add CLAUDE.md or run drift_guard_init.',
+      timestamp: new Date().toISOString(),
+    };
     return {
-      content: [
-        {
-          type: 'text' as const,
-          text: JSON.stringify({
-            error: 'No promises found. Run drift_guard_init first, then extract and save promises from your project files. See README for the full setup flow.',
-          }),
-        },
-      ],
-      isError: true,
+      content: [{ type: 'text' as const, text: JSON.stringify(report) }],
     };
   }
 

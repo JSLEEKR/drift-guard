@@ -98,6 +98,217 @@ export class PromiseCollector {
     };
   }
 
+  /**
+   * Auto-extract promises from CLAUDE.md and project files using pattern matching.
+   * No AI required — parses known patterns into verifiable promises.
+   */
+  autoExtract(projectRoot: string, customSources?: string[]): DriftPromise[] {
+    const patterns = customSources ?? DEFAULT_SOURCE_PATTERNS;
+    const promises: DriftPromise[] = [];
+    let id = 1;
+
+    for (const pattern of patterns) {
+      const matchedPaths = resolvePattern(projectRoot, pattern);
+      for (const fullPath of matchedPaths) {
+        try {
+          const content = readFileSync(fullPath, 'utf-8');
+          const extracted = this.extractFromContent(content, id);
+          promises.push(...extracted);
+          id += extracted.length;
+        } catch {
+          // skip unreadable
+        }
+      }
+    }
+
+    // Always add structural promises for the project
+    const structural = this.extractStructuralPromises(projectRoot, id);
+    promises.push(...structural);
+
+    return promises;
+  }
+
+  /** Extract promises from markdown content using pattern matching */
+  private extractFromContent(content: string, startId: number): DriftPromise[] {
+    const promises: DriftPromise[] = [];
+    let id = startId;
+    const lines = content.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // Pattern: "README 300줄+" or "README.md" with line requirements
+      const readmeLineMatch = line.match(/README[^\d]*(\d+)\s*줄|README[^\d]*(\d+)\s*lines?/i);
+      if (readmeLineMatch) {
+        const min = parseInt(readmeLineMatch[1] ?? readmeLineMatch[2], 10);
+        if (min > 0) {
+          promises.push({
+            id: `promise-${String(id++).padStart(3, '0')}`,
+            source: 'auto-extracted',
+            text: `README.md must have at least ${min} lines`,
+            category: 'quality',
+            check_type: 'min_lines',
+            check_config: { file: 'README.md', min },
+            weight: 6,
+          });
+        }
+      }
+
+      // Pattern: "tests" with count — e.g., "80+ tests", "120+ tests"
+      const testCountMatch = line.match(/(\d+)\+?\s*tests?/i);
+      if (testCountMatch && !line.includes('Table') && !line.includes('|')) {
+        const minTests = parseInt(testCountMatch[1], 10);
+        if (minTests >= 10) {
+          promises.push({
+            id: `promise-${String(id++).padStart(3, '0')}`,
+            source: 'auto-extracted',
+            text: `Project must have at least ${minTests} tests`,
+            category: 'quality',
+            check_type: 'glob_count',
+            check_config: { pattern: '**/*.test.{ts,js,go,py,rs}', min: 1 },
+            weight: 8,
+          });
+        }
+      }
+
+      // Pattern: "Generator ≠ Evaluator" or "NEVER combine"
+      if (line.includes('Generator') && line.includes('Evaluator') && (line.includes('≠') || line.includes('NOT'))) {
+        promises.push({
+          id: `promise-${String(id++).padStart(3, '0')}`,
+          source: 'auto-extracted',
+          text: 'Generator and Evaluator must be separate agents',
+          category: 'process',
+          check_type: 'content_match',
+          check_config: { file: 'CLAUDE.md', must_contain: ['Generator', 'Evaluator'] },
+          weight: 9,
+        });
+      }
+
+      // Pattern: file must exist — e.g., "CHANGELOG.md", "LICENSE"
+      const fileExistMatch = line.match(/must (?:have|include|contain)\s+[`"]?(\w+(?:\.\w+)+)[`"]?/i);
+      if (fileExistMatch) {
+        promises.push({
+          id: `promise-${String(id++).padStart(3, '0')}`,
+          source: 'auto-extracted',
+          text: `${fileExistMatch[1]} must exist`,
+          category: 'quality',
+          check_type: 'file_exists',
+          check_config: { path: fileExistMatch[1] },
+          weight: 5,
+        });
+      }
+
+      // Pattern: topics count — "topics 8+"
+      const topicsMatch = line.match(/topics?\s+(\d+)\+?/i);
+      if (topicsMatch) {
+        const min = parseInt(topicsMatch[1], 10);
+        if (min > 0) {
+          promises.push({
+            id: `promise-${String(id++).padStart(3, '0')}`,
+            source: 'auto-extracted',
+            text: `GitHub repo must have at least ${min} topics`,
+            category: 'quality',
+            check_type: 'git_pattern',
+            check_config: { min_commits: 1 },
+            weight: 4,
+          });
+        }
+      }
+
+      // Pattern: security gates — hooks, pre_bash_review, etc.
+      if (line.includes('.hooks/') && line.includes('.js')) {
+        const hookMatch = line.match(/\.hooks\/(\S+\.js)/);
+        if (hookMatch) {
+          promises.push({
+            id: `promise-${String(id++).padStart(3, '0')}`,
+            source: 'auto-extracted',
+            text: `Safety hook ${hookMatch[1]} must exist`,
+            category: 'security',
+            check_type: 'file_exists',
+            check_config: { path: `.hooks/${hookMatch[1]}` },
+            weight: 7,
+          });
+        }
+      }
+
+      // Pattern: "3 consecutive clean" eval requirement
+      if (line.includes('3 consecutive') && (line.includes('clean') || line.includes('CLEAN'))) {
+        promises.push({
+          id: `promise-${String(id++).padStart(3, '0')}`,
+          source: 'auto-extracted',
+          text: '3 consecutive clean eval cycles required before shipping',
+          category: 'process',
+          check_type: 'content_match',
+          check_config: { file: 'CLAUDE.md', must_contain: ['3 consecutive', 'clean'] },
+          weight: 9,
+        });
+      }
+    }
+
+    // Deduplicate by text
+    const seen = new Set<string>();
+    return promises.filter((p) => {
+      if (seen.has(p.text)) return false;
+      seen.add(p.text);
+      return true;
+    });
+  }
+
+  /** Extract structural promises by checking what exists in the project */
+  private extractStructuralPromises(projectRoot: string, startId: number): DriftPromise[] {
+    const promises: DriftPromise[] = [];
+    let id = startId;
+
+    // Check for common required files
+    const requiredFiles = ['README.md', 'LICENSE', '.gitignore'];
+    for (const file of requiredFiles) {
+      if (existsSync(join(projectRoot, file))) {
+        promises.push({
+          id: `promise-${String(id++).padStart(3, '0')}`,
+          source: 'auto-structural',
+          text: `${file} must exist`,
+          category: 'quality',
+          check_type: 'file_exists',
+          check_config: { path: file },
+          weight: 5,
+        });
+      }
+    }
+
+    // Check for CLAUDE.md
+    if (existsSync(join(projectRoot, 'CLAUDE.md'))) {
+      promises.push({
+        id: `promise-${String(id++).padStart(3, '0')}`,
+        source: 'auto-structural',
+        text: 'CLAUDE.md project instructions must exist',
+        category: 'architecture',
+        check_type: 'file_exists',
+        check_config: { path: 'CLAUDE.md' },
+        weight: 7,
+      });
+    }
+
+    // Check for test files
+    const testDirs = ['tests', 'test', 'src', '__tests__'];
+    for (const dir of testDirs) {
+      const fullDir = join(projectRoot, dir);
+      if (existsSync(fullDir)) {
+        promises.push({
+          id: `promise-${String(id++).padStart(3, '0')}`,
+          source: 'auto-structural',
+          text: `Test directory ${dir}/ must contain test files`,
+          category: 'quality',
+          check_type: 'glob_count',
+          check_config: { pattern: `${dir}/**/*.test.*`, min: 1 },
+          weight: 8,
+        });
+        break;
+      }
+    }
+
+    return promises;
+  }
+
   parseExtractionResponse(response: string): DriftPromise[] {
     // Try to extract JSON array from response
     const jsonMatch = response.match(/\[[\s\S]*\]/);

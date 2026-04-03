@@ -1,11 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { PromiseCollector } from '../../src/collector/promise-collector.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const FIXTURE_PROJECT = join(__dirname, '../../fixtures/sample-project');
 const EMPTY_PROJECT = join(__dirname, '../../fixtures/empty-project');
+const TMP_PROJECT = join(__dirname, '../../fixtures/tmp-auto-extract');
 
 describe('PromiseCollector', () => {
   const collector = new PromiseCollector();
@@ -127,6 +129,97 @@ describe('PromiseCollector', () => {
     it('returns empty array for malformed response', () => {
       const result = collector.parseExtractionResponse('not json at all');
 
+      expect(result).toHaveLength(0);
+    });
+  });
+
+  describe('autoExtract', () => {
+    beforeEach(() => {
+      mkdirSync(TMP_PROJECT, { recursive: true });
+    });
+    afterEach(() => {
+      rmSync(TMP_PROJECT, { recursive: true, force: true });
+    });
+
+    it('extracts README line count promises', () => {
+      writeFileSync(join(TMP_PROJECT, 'CLAUDE.md'), '- README 300줄+ 필수\n');
+      writeFileSync(join(TMP_PROJECT, 'README.md'), 'Hello\n');
+
+      const result = collector.autoExtract(TMP_PROJECT);
+
+      const readmePromise = result.find((p) => p.text.includes('300 lines'));
+      expect(readmePromise).toBeDefined();
+      expect(readmePromise?.check_type).toBe('min_lines');
+      expect(readmePromise?.check_config).toEqual({ file: 'README.md', min: 300 });
+    });
+
+    it('extracts Generator ≠ Evaluator promise', () => {
+      writeFileSync(join(TMP_PROJECT, 'CLAUDE.md'), '### Generator ≠ Evaluator (CRITICAL)\n- Builder must NOT evaluate its own work\n');
+
+      const result = collector.autoExtract(TMP_PROJECT);
+
+      const genEval = result.find((p) => p.text.includes('Generator'));
+      expect(genEval).toBeDefined();
+      expect(genEval?.category).toBe('process');
+      expect(genEval?.weight).toBe(9);
+    });
+
+    it('extracts 3 consecutive clean promise', () => {
+      writeFileSync(join(TMP_PROJECT, 'CLAUDE.md'), '→ 3 consecutive DEEP AUDIT CLEAN → PASS\n');
+
+      const result = collector.autoExtract(TMP_PROJECT);
+
+      const cleanPromise = result.find((p) => p.text.includes('3 consecutive'));
+      expect(cleanPromise).toBeDefined();
+      expect(cleanPromise?.check_type).toBe('content_match');
+    });
+
+    it('extracts safety hook promises', () => {
+      writeFileSync(join(TMP_PROJECT, 'CLAUDE.md'), '- .hooks/pre_bash_review.js blocks dangerous commands\n');
+
+      const result = collector.autoExtract(TMP_PROJECT);
+
+      const hookPromise = result.find((p) => p.text.includes('pre_bash_review'));
+      expect(hookPromise).toBeDefined();
+      expect(hookPromise?.category).toBe('security');
+      expect(hookPromise?.check_type).toBe('file_exists');
+    });
+
+    it('adds structural promises for existing files', () => {
+      writeFileSync(join(TMP_PROJECT, 'README.md'), '# Test\n');
+      writeFileSync(join(TMP_PROJECT, 'LICENSE'), 'MIT\n');
+
+      const result = collector.autoExtract(TMP_PROJECT);
+
+      const readmeExists = result.find((p) => p.text === 'README.md must exist');
+      const licenseExists = result.find((p) => p.text === 'LICENSE must exist');
+      expect(readmeExists).toBeDefined();
+      expect(licenseExists).toBeDefined();
+    });
+
+    it('deduplicates promises by text', () => {
+      writeFileSync(join(TMP_PROJECT, 'CLAUDE.md'),
+        '- README 300줄+ 필수\n- README 300줄+ 이상\n');
+
+      const result = collector.autoExtract(TMP_PROJECT);
+
+      const readmePromises = result.filter((p) => p.text.includes('300 lines'));
+      expect(readmePromises).toHaveLength(1);
+    });
+
+    it('returns structural promises even with no CLAUDE.md', () => {
+      writeFileSync(join(TMP_PROJECT, 'README.md'), '# Test\n');
+
+      const result = collector.autoExtract(TMP_PROJECT);
+
+      expect(result.length).toBeGreaterThan(0);
+      expect(result.some((p) => p.source === 'auto-structural')).toBe(true);
+    });
+
+    it('returns empty for truly empty project', () => {
+      const result = collector.autoExtract(TMP_PROJECT);
+
+      // No files exist, no structural promises either
       expect(result).toHaveLength(0);
     });
   });
